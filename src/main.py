@@ -1,126 +1,89 @@
 import mediapipe as mp
-import os
 import cv2
-import pandas as pd
 import numpy as np
-from tqdm import tqdm
 
-from classes import Video
-from src.lib import Landmarks
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
 
-def estimate(video: Video, output_path: str):
-	output = []
-	timestamps = []
-	videoCapture = cv2.VideoCapture(video.path)        
-	videoWriter = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*"mp4v"), video.fps, (video.width, video.height))
+# will return the landmark with index name
+def read_landmark(name, landmarks):
+    return landmarks[mp_pose.PoseLandmark[name].value]
 
-	# Initialize the pose estimation model
-	with mp.solutions.pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
-		for frame_index in tqdm(range(vid.nFrames)):
-			success, img = vid_cap.read()
-			if not success:
-				break
-			img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            # Get the timestamp of the current frame
-			timestamps.append(vid_cap.get(cv2.CAP_PROP_POS_MSEC))
-			results = pose.process(img)
-			output.append(results)
-
-            # Draw the pose annotation on the image.
-			img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-			mp.solutions.drawing_utils.draw_landmarks(
-                img,
-                results.pose_landmarks,
-                mp.solutions.pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=mp.solutions.drawing_styles.get_default_pose_landmarks_style()
-                )
-			# Write the frame to the output video
-			videoWriter.write(img)
-	videoWriter.release()
-	cv2.destroyAllWindows()
-
-	marker_df,visibility_df = Landmarks.landmarks_2_table(output,time_vec = np.array(timestamps)/1000)
- 
-	return Video.from_path(output_path), marker_df, visibility_df
-
-
-def video_pose_estimation(video_path: str, output_path = None, verbose=True):
-    """
-    Apply a pose estimation model to each frame of a video and return a processed video and the output from the model for each frame.
-
-    Args:
-    video_path (str): File path of the video to be processed.
-    output_path (str, optional): File path of the output video. Default is None.
-    verbose (bool, optional): Boolean indicating whether to print progress updates. Default is True.
-
-    Returns:
-    vid (Video): Processed video object.
-    marker_df (DataFrame): DataFrame containing the x, y, and z coordinates of each landmark for each frame of the processed video.
-    visibility_df (DataFrame): DataFrame containing the visibility score for each landmark for each frame of the processed video.
-    """
-    output = []
-    timestamps =[]
-    # Todo add option to input video:
-    vid = Video.from_path(video_path)
-    video_name = os.path.basename(video_path)
-    #init video writer and reader
-    vid_cap = cv2.VideoCapture(vid.path) 
-    video_writer = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*"mp4v"), vid.fps, (vid.width, vid.height))
-
-    # Initialize the pose estimation model
-    with mp.solutions.pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
-        for frame_index in tqdm(range(vid.nFrames)):
-            success, img = vid_cap.read()
-            if not success:
-                break
-            # Convert BGR to RGB
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            # Get the timestamp of the current frame
-            timestamps.append(vid_cap.get(cv2.CAP_PROP_POS_MSEC))
-            # Run the model
-            results = pose.process(img)
-            output.append(results)
-            # Draw the pose annotation on the image.
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            mp.solutions.drawing_utils.draw_landmarks(
-                img,
-                results.pose_landmarks,
-                mp.solutions.pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=mp.solutions.drawing_styles.get_default_pose_landmarks_style()
-                )
-                    # Write the frame to the output video
-            video_writer.write(img)
-    # close video
-    video_writer.release()
-    cv2.destroyAllWindows()
-    # Return the processed video and the model outputs
+# will return landmarks or None
+def extract_landmarks(results):
     try:
-      marker_df,visibility_df = landmarks_2_table(output,time_vec = np.array(timestamps)/1000)
+        landmarks = results.pose_world_landmarks.landmark
     except:
-      marker_df,visibility_df = output,[]
-      print("plese replace the video")
-    return Video.from_path(output_path), marker_df, visibility_df
+        return None
+    return landmarks
+
+# calculate the angle between 3 3d points
+def calculate_angle_3d(a, b, c):
+    """
+    Calculates the angle between three 3D points a, b, c.
+    a, b, c: MediaPipe landmark objects (with .x, .y, .z attributes).
+    Returns: Angle in degrees.
+    """
+    # a_arr = np.array([a.x, a.y, a.z])
+    # b_arr = np.array([b.x, b.y, b.z])
+    # c_arr = np.array([c.x, c.y, c.z])
+    
+    # ba = a_arr - b_arr
+    # bc = c_arr - b_arr
+    
+    # cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+    
+    # angle = np.arccos(np.clip(cosine_angle, -1.0, 1.0))
+    
+    # return np.degrees(angle)
+    a = np.array([a.x, a.y, a.z])
+    b = np.array([b.x, b.y, b.z])
+    c = np.array([c.x, c.y, c.z])
+    
+    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
+    angle = np.abs(radians*180/np.pi)
+    
+    if (angle > 180):
+        angle = 360 - angle
+    return angle
+    
+    
+def webcam_demo():
+    video_capture = cv2.VideoCapture(0)
+    with mp_pose.Pose(min_detection_confidence = 0.5, min_tracking_confidence = 0.5) as pose:
+        while video_capture.isOpened():
+            ret, frame = video_capture.read()
+            
+            # recolor the cv2 image
+            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            image.flags.writeable = False # saves memory while processing image
+            results = pose.process(image)
+            image.flags.writeable = True           
+
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            
+            landmarks = extract_landmarks(results)
+            if landmarks:
+                print("left biceps angle")
+                print(calculate_angle_3d(read_landmark("LEFT_SHOULDER", landmarks),
+                                         read_landmark("LEFT_ELBOW", landmarks),
+                                         read_landmark("LEFT_WRIST", landmarks)))
+            else:
+                print("No landmarks detected")
+
+            # draw landmarks on image
+            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            
+            cv2.imshow("Mediapipe Output",image)
+            if(cv2.waitKey(10) & 0xFF == ord('q')):
+                break
+    video_capture.release()
+    cv2.destroyAllWindows()
+
+def main():
+    webcam_demo()
 
 
-
-
-
-from google.colab import files
-uploaded = files.upload()
-for file_name in uploaded.keys():
-  print('User uploaded file "{name}" with length {length} bytes'.format(
-      name=file_name, length=len(uploaded[file_name])))
-     
-
-
-output_path = "proc.mp4"
-vid, marker_df,visibility_df  = video_pose_estimation(video_path = file_name,output_path =output_path)
-     
-
-
-vid.convert()
-vid.play(frac = 0.75) #change frac acording to the video width and height
-     
-marker_df.head()
-
-
+if __name__ == "__main__":
+    main()

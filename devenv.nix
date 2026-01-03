@@ -11,25 +11,31 @@
   env.GREET = "devenv";
 
   # https://devenv.sh/packages/
-  packages = [
+  packages = with pkgs; [
     # Add a C compiler for building some Python packages
-    pkgs.stdenv.cc.cc.lib
+    stdenv.cc.cc.lib
     # General dependencies often needed for Python/ML/computer vision on Nix
-    pkgs.zlib
-    pkgs.opencv4 # For handling images/video (may not be strictly required by pip mediapipe, but often useful)
-    # Add other tools you might need, e.g., git
-    pkgs.git
-    pkgs.libGL # for libgl
-    pkgs.glib
+    zlib
+    opencv4 # For handling images/video (may not be strictly required by pip mediapipe, but often useful)
+    git
+    libGL
+    glib
+
+    xorg.libX11 # for opencv webcam
+    xorg.libXext
+    xorg.libXrender
+    libglvnd 
+    libsm
+    libice
   ];
 
   # https://devenv.sh/languages/
   languages.python = {
     enable = true;
-    version = "3.12";
+    version = "3.11";
     venv.enable = true;
     venv.requirements = ''
-      mediapipe
+      mediapipe==0.10.21
       numpy
       pandas
       opencv-python
@@ -49,6 +55,7 @@
 
   # https://devenv.sh/basics/
   enterShell = ''
+    export QT_QPA_PLATFORM=xcb
     echo "Gym Form Analysis Environment Loaded"
     echo "Python: $(python --version)"
   '';
