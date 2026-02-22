@@ -15,7 +15,7 @@ def extract_landmarks(results):
    return landmarks
 
 
-def read_landmark(name, landmarks):
+def read_landmark(name, landmarks,mp_pose):
     """
    Belirtilen isimle landmark'ı okur.
   
