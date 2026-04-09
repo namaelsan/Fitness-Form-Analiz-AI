@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC
 
 from fitness_form_ai.domain.rep_frame import RepFrame
-from fitness_form_ai.domain.rules import Rule
+from fitness_form_ai.domain.rules import Rule, RuleContext
 
 
 class Exercise(ABC):
@@ -25,5 +25,5 @@ class Exercise(ABC):
             return False, f"Failed: {', '.join(failed_reasons)}"
         return True, ""
 
-    def get_rule_states(self, landmarks: dict[str, object]) -> list[tuple[str, float]]:
-        return [(rule.rule_name, rule.get_current_value(landmarks)) for rule in self.rules]
+    def get_rule_states(self, context: RuleContext) -> list[tuple[str, str]]:
+        return [(rule.rule_name, rule.describe_current(context)) for rule in self.rules]

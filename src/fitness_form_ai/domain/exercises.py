@@ -7,10 +7,12 @@ from fitness_form_ai.domain.metrics import (
     TrackerAngleMetric,
 )
 from fitness_form_ai.domain.rules import (
+    KneeValgusRule,
     MaxValueRule,
     MinValueRule,
     RangeRule,
     StabilityRule,
+    MaxDepthRule,
     TempoRule,
 )
 
@@ -31,9 +33,8 @@ class OneArmDumbbellCurl(Exercise):
             rules=[
                 MinValueRule("Full contraction", elbow_angle, 125),
                 RangeRule("No bottom-shortening", elbow_angle, (35, 175)),
-                StabilityRule("Upper Arm Still", upper_arm_angle, 20),
-                RangeRule("Wrist stays neutral", wrist_angle, (140, 195)),
-                TempoRule("Controlled tempo", max_speed=140, min_duration=1.0),
+                StabilityRule("Upper Arm Still", upper_arm_angle, 25),
+                TempoRule("Controlled tempo", max_speed=250, min_duration=1.0),
             ],
             primary_joints=["RIGHT_SHOULDER", "RIGHT_ELBOW", "RIGHT_WRIST"],
             start_phase="concentric",
@@ -59,15 +60,14 @@ class Squat(Exercise):
             "RIGHT_ANKLE",
             "x",
         )
-        knee_tracking = SymmetryMetric("Knee tracking", knee_width, ankle_width)
         super().__init__(
             name="Squat",
             rules=[
-                RangeRule("Depth reached", knee_angle, (50, 180)),
+                MaxDepthRule("Depth reached", knee_angle, 85),
                 MinValueRule("Standing lockout", knee_angle, 160),
                 RangeRule("Torso stays stacked", torso_angle, (145, 180)),
-                MaxValueRule("Knees track over feet", knee_tracking, 0.18),
-                TempoRule("Controlled descent", max_speed=160, min_duration=1.2),
+                KneeValgusRule("Knees track over feet", knee_width, ankle_width, min_ratio=0.55),
+                TempoRule("Controlled descent", max_speed=250, min_duration=1.0),
             ],
             primary_joints=["LEFT_HIP", "LEFT_KNEE", "LEFT_ANKLE"],
             start_phase="eccentric",

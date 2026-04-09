@@ -1,6 +1,14 @@
 from fitness_form_ai.domain.rep_frame import RepFrame
 from fitness_form_ai.domain.metrics import AngleMetric, SymmetryMetric, TrackerAngleMetric
-from fitness_form_ai.domain.rules import AngleRule, MaxValueRule, RangeRule, SpeedRule, StabilityRule, TempoRule
+from fitness_form_ai.domain.rules import (
+    AngleRule,
+    KneeValgusRule,
+    MaxValueRule,
+    RangeRule,
+    SpeedRule,
+    StabilityRule,
+    TempoRule,
+)
 from fitness_form_ai.inference.base import LandmarkPoint
 
 
@@ -83,3 +91,39 @@ def test_symmetry_rule_accepts_balanced_values() -> None:
     }
     rep = [RepFrame(angle=0, timestamp=0.0, landmarks=landmarks)]
     assert rule.apply(rep) is True
+
+
+def test_knee_valgus_rule_fails_only_when_knees_collapse_inward() -> None:
+    from fitness_form_ai.domain.metrics import JointPairAxisDistanceMetric
+
+    knee_width = JointPairAxisDistanceMetric("Knee width", "LEFT_KNEE", "RIGHT_KNEE", "x")
+    stance_width = JointPairAxisDistanceMetric("Stance width", "LEFT_ANKLE", "RIGHT_ANKLE", "x")
+    rule = KneeValgusRule("Knees track over feet", knee_width, stance_width, min_ratio=0.75)
+
+    inward_collapse = [
+        RepFrame(
+            angle=0,
+            timestamp=0.0,
+            landmarks={
+                "LEFT_KNEE": LandmarkPoint(x=0.45, y=0, z=0),
+                "RIGHT_KNEE": LandmarkPoint(x=0.55, y=0, z=0),
+                "LEFT_ANKLE": LandmarkPoint(x=0.0, y=0, z=0),
+                "RIGHT_ANKLE": LandmarkPoint(x=1.0, y=0, z=0),
+            },
+        ),
+    ]
+    knees_wider_than_feet = [
+        RepFrame(
+            angle=0,
+            timestamp=0.0,
+            landmarks={
+                "LEFT_KNEE": LandmarkPoint(x=-0.1, y=0, z=0),
+                "RIGHT_KNEE": LandmarkPoint(x=1.1, y=0, z=0),
+                "LEFT_ANKLE": LandmarkPoint(x=0.0, y=0, z=0),
+                "RIGHT_ANKLE": LandmarkPoint(x=1.0, y=0, z=0),
+            },
+        ),
+    ]
+
+    assert rule.apply(inward_collapse) is False
+    assert rule.apply(knees_wider_than_feet) is True

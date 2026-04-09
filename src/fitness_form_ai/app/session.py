@@ -10,6 +10,8 @@ import numpy as np
 from fitness_form_ai.app.catalog import EXERCISE_REGISTRY, MODEL_FACTORY
 from fitness_form_ai.app.config import TrackingConfig
 from fitness_form_ai.domain.exercise import Exercise
+from fitness_form_ai.domain.rep_frame import RepFrame
+from fitness_form_ai.domain.rules import RuleContext
 from fitness_form_ai.domain.tracker import RepTracker
 from fitness_form_ai.inference.base import PoseModel
 from fitness_form_ai.utils.geometry import calculate_angle_3d
@@ -21,7 +23,7 @@ class FrameOutcome:
     image_bgr: np.ndarray | None
     angle: float | None
     tracker_state: str
-    rule_states: list[tuple[str, float]]
+    rule_states: list[tuple[str, str]]
     valid_reps: int
     total_reps: int
     message: str
@@ -154,7 +156,7 @@ class TrackingSession:
         landmarks = self.model.extract_landmarks(result)
 
         angle: float | None = None
-        rule_states: list[tuple[str, float]] = []
+        rule_states: list[tuple[str, str]] = []
 
         if landmarks:
             joints = [read_landmark(joint_name, landmarks) for joint_name in self.exercise.primary_joints]
@@ -162,9 +164,21 @@ class TrackingSession:
                 angle = calculate_angle_3d(list(joints))
                 timestamp = time.time()
                 rep_completed = self.tracker.add_frame(angle, timestamp, landmarks=landmarks)
+                current_frame = RepFrame(
+                    angle=angle,
+                    timestamp=timestamp,
+                    velocity=self.tracker.current_velocity,
+                    landmarks=landmarks,
+                )
                 if rep_completed:
                     self._finalize_rep()
-                rule_states = self.exercise.get_rule_states(landmarks)
+                rule_states = self.exercise.get_rule_states(
+                    RuleContext(
+                        landmarks=landmarks,
+                        current_frame=current_frame,
+                        rep_duration=self.tracker.current_rep_duration,
+                    )
+                )
 
         self.model.draw_landmarks(image_bgr, result)
         return FrameOutcome(

@@ -104,7 +104,7 @@ class FitnessApp:
         for rule_name, value in outcome.rule_states:
             tag = f"rule_val_{rule_name}"
             if dpg.does_item_exist(tag):
-                dpg.set_value(tag, f"{rule_name}: {int(value)}°")
+                dpg.set_value(tag, f"{rule_name}: {value}")
 
         cv2.putText(
             outcome.image_bgr,
@@ -242,7 +242,12 @@ class FitnessApp:
         if self.session.exercise is None:
             return
         for rule in self.session.exercise.rules:
-            dpg.add_text(f"{rule.rule_name}: 0°", parent="rules_group", tag=f"rule_val_{rule.rule_name}")
+            dpg.add_text(
+                f"{rule.rule_name}: waiting for data",
+                parent="rules_group",
+                tag=f"rule_val_{rule.rule_name}",
+                wrap=280,
+            )
 
     def _set_video_status(self) -> None:
         label = (

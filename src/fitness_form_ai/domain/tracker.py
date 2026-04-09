@@ -48,6 +48,18 @@ class RepTracker:
             self.angle_history = self.angle_history[-50:]
         return rep_data
 
+    @property
+    def current_velocity(self) -> float:
+        if not self.angle_history:
+            return 0.0
+        return self.angle_history[-1].velocity
+
+    @property
+    def current_rep_duration(self) -> float:
+        if len(self._current_rep_data) < 2:
+            return 0.0
+        return self._current_rep_data[-1].timestamp - self._current_rep_data[0].timestamp
+
     def _smooth_angle(self) -> float:
         if len(self.angle_history) < self.smoothing_window:
             return self.angle_history[-1].angle
