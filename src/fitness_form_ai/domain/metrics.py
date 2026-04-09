@@ -50,19 +50,6 @@ class TrackerAngleMetric(Metric):
         return frame.angle
 
 
-class AxisMetric(Metric):
-    def __init__(self, label: str, joint: str, axis: str) -> None:
-        super().__init__(label)
-        self.joint = joint
-        self.axis = axis
-
-    def from_landmarks(self, landmarks: dict[str, object]) -> float | None:
-        landmark = read_landmark(self.joint, landmarks)
-        if landmark is None:
-            return None
-        return float(getattr(landmark, self.axis))
-
-
 class JointPairAxisDistanceMetric(Metric):
     def __init__(self, label: str, joint_a: str, joint_b: str, axis: str) -> None:
         super().__init__(label)

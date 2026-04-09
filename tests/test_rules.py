@@ -1,7 +1,6 @@
 from fitness_form_ai.domain.rep_frame import RepFrame
 from fitness_form_ai.domain.metrics import AngleMetric, SymmetryMetric, TrackerAngleMetric
 from fitness_form_ai.domain.rules import (
-    AngleRule,
     KneeValgusRule,
     MaxValueRule,
     RangeRule,
@@ -22,7 +21,7 @@ def test_speed_rule_rejects_fast_rep() -> None:
 
 
 def test_angle_rule_uses_frame_angles_without_landmarks() -> None:
-    rule = AngleRule("Range", TrackerAngleMetric("Tracker"), (30, 120))
+    rule = RangeRule("Range", TrackerAngleMetric("Tracker"), (30, 120))
     rep = [
         RepFrame(angle=45, timestamp=0.0),
         RepFrame(angle=90, timestamp=0.1),
@@ -31,7 +30,7 @@ def test_angle_rule_uses_frame_angles_without_landmarks() -> None:
 
 
 def test_angle_rule_uses_landmarks_when_available() -> None:
-    rule = AngleRule("Elbow", AngleMetric("Elbow", ["A", "B", "C"]), (80, 100))
+    rule = RangeRule("Elbow", AngleMetric("Elbow", ["A", "B", "C"]), (80, 100))
     landmarks = {
         "A": LandmarkPoint(x=0, y=1, z=0),
         "B": LandmarkPoint(x=0, y=0, z=0),

@@ -275,5 +275,3 @@ class TempoRule(Rule):
         return ", ".join(parts)
 
 
-class AngleRule(RangeRule):
-    pass
