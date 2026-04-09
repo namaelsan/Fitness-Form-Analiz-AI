@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Any
 import time
 from core.repframe import RepFrame
 
@@ -17,13 +17,13 @@ class RepTracker:
         self.smoothing_window = 5
         self.velocity_threshold = 10.0 # degrees per second
 
-    def add_frame(self, angle: float, timestamp: float) -> bool:
+    def add_frame(self, angle: float, timestamp: float, landmarks: Any = None) -> bool:
         """
         Adds a new frame, calculates smoothed angle and velocity.
         Updates FSM state based on velocity and angle.
         Returns True if a repetition has been completed this frame.
         """
-        frame = RepFrame(angle=angle, timestamp=timestamp)
+        frame = RepFrame(angle=angle, timestamp=timestamp, landmarks=landmarks)
         self.angle_history.append(frame)
         
         smoothed_angle = self._smooth_angle()
@@ -31,7 +31,7 @@ class RepTracker:
         velocity = self._calculate_velocity(smoothed_angle, timestamp)
         self.angle_history[-1].velocity = velocity
         
-        self._current_rep_data.append(RepFrame(angle=smoothed_angle, timestamp=timestamp, velocity=velocity))
+        self._current_rep_data.append(RepFrame(angle=smoothed_angle, timestamp=timestamp, velocity=velocity, landmarks=landmarks))
         
         self._update_state(smoothed_angle, velocity)
         

@@ -37,8 +37,21 @@ class AngleRule(Rule):
         if not rep_data:
             return False
             
-        min_angle = min(frame.angle for frame in rep_data)
-        max_angle = max(frame.angle for frame in rep_data)
+        if self.joints and rep_data[0].landmarks:
+            from util import read_landmark, calculate_angle_3d
+            
+            angles = []
+            for frame in rep_data:
+                try:
+                    joints_data = [read_landmark(j, frame.landmarks) for j in self.joints]
+                    angles.append(calculate_angle_3d(joints_data))
+                except Exception:
+                    angles.append(frame.angle)
+            min_angle = min(angles)
+            max_angle = max(angles)
+        else:
+            min_angle = min(frame.angle for frame in rep_data)
+            max_angle = max(frame.angle for frame in rep_data)
         
         # Ensure the entire repetition stays within the defined boundaries (0 to 180)
         return min_angle >= self.angle_range[0] and max_angle <= self.angle_range[1]

@@ -17,18 +17,24 @@ def extract_landmarks(results):
    return landmarks
 
 
-def read_landmark(name, landmarks,mp_pose):
+def read_landmark(name, landmarks, mp_pose=None):
     """
-   Belirtilen isimle landmark'ı okur.
-  
-   Args:
-       name: Landmark ismi (örn: "LEFT_SHOULDER")
-       landmarks: MediaPipe landmark listesi
-  
-   Returns:
-       Landmark objesi (x, y, z koordinatları içerir)
-   """
-    return landmarks[mp_pose.PoseLandmark[name].value]
+    Belirtilen isimle landmark'ı okur.
+   
+    Args:
+        name: Landmark ismi (örn: "LEFT_SHOULDER")
+        landmarks: Dictionary veya MediaPipe landmark listesi
+        mp_pose: Geriye dönük uyumluluk için, eğer landmarks dict değilse.
+   
+    Returns:
+        Landmark objesi (x, y, z koordinatları içerir)
+    """
+    if isinstance(landmarks, dict) and name in landmarks:
+        return landmarks[name]
+        
+    if mp_pose:
+        return landmarks[mp_pose.PoseLandmark[name].value]
+    return None
 
 def calculate_angle_3d(points: list):
     """
