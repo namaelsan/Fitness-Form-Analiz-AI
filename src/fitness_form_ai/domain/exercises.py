@@ -24,10 +24,6 @@ class OneArmDumbbellCurl(Exercise):
             "Upper arm angle",
             ["RIGHT_HIP", "RIGHT_SHOULDER", "RIGHT_ELBOW"],
         )
-        wrist_angle = AngleMetric(
-            "Wrist alignment",
-            ["RIGHT_ELBOW", "RIGHT_WRIST", "RIGHT_INDEX"],
-        )
         super().__init__(
             name="One Arm Dumbbell Curl",
             rules=[
@@ -174,24 +170,5 @@ class LateralRaise(Exercise):
                 TempoRule("No swinging", max_speed=120, min_duration=1.0),
             ],
             primary_joints=["RIGHT_HIP", "RIGHT_SHOULDER", "RIGHT_ELBOW"],
-            start_phase="concentric",
-        )
-
-
-class PushUp(Exercise):
-    def __init__(self) -> None:
-        elbow_angle = TrackerAngleMetric("Elbow angle")
-        back_angle = AngleMetric(
-            "Back line",
-            ["LEFT_SHOULDER", "LEFT_HIP", "LEFT_ANKLE"],
-        )
-        super().__init__(
-            name="Push Up",
-            rules=[
-                RangeRule("Elbow angle rule", elbow_angle, (50, 180)),
-                RangeRule("Straight Back", back_angle, (160, 180)),
-                TempoRule("Controlled pushup tempo", max_speed=150, min_duration=1.0),
-            ],
-            primary_joints=["LEFT_SHOULDER", "LEFT_ELBOW", "LEFT_WRIST"],
             start_phase="concentric",
         )

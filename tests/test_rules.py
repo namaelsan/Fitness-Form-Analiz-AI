@@ -4,20 +4,10 @@ from fitness_form_ai.domain.rules import (
     KneeValgusRule,
     MaxValueRule,
     RangeRule,
-    SpeedRule,
     StabilityRule,
     TempoRule,
 )
 from fitness_form_ai.inference.base import LandmarkPoint
-
-
-def test_speed_rule_rejects_fast_rep() -> None:
-    rule = SpeedRule("Tempo", max_speed=20)
-    rep = [
-        RepFrame(angle=90, timestamp=0.0, velocity=10),
-        RepFrame(angle=100, timestamp=0.1, velocity=25),
-    ]
-    assert rule.apply(rep) is False
 
 
 def test_angle_rule_uses_frame_angles_without_landmarks() -> None:

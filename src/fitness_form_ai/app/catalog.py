@@ -5,7 +5,6 @@ from fitness_form_ai.domain.exercises import (
     Deadlift,
     LateralRaise,
     OneArmDumbbellCurl,
-    PushUp,
     ShoulderPress,
     Squat,
 )
@@ -19,7 +18,6 @@ EXERCISE_REGISTRY: dict[str, ExerciseFactory] = {
     "deadlift": Deadlift,
     "shoulder_press": ShoulderPress,
     "lateral_raise": LateralRaise,
-    "pushup": PushUp,
 }
 
 MODEL_FACTORY = create_pose_model

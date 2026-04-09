@@ -17,6 +17,14 @@ class RepTracker:
         self.smoothing_window = 5
         self.velocity_threshold = 10.0
 
+    @property
+    def active_phase(self) -> str:
+        return self.start_phase.upper()
+
+    @property
+    def return_phase(self) -> str:
+        return "ECCENTRIC" if self.start_phase == "concentric" else "CONCENTRIC"
+
     def add_frame(self, angle: float, timestamp: float, landmarks: object = None) -> bool:
         frame = RepFrame(angle=angle, timestamp=timestamp, landmarks=landmarks)
         self.angle_history.append(frame)
@@ -82,27 +90,27 @@ class RepTracker:
     def _update_state(self, angle: float, velocity: float) -> None:
         if self.state == "IDLE":
             if self.start_phase == "concentric" and velocity < -self.velocity_threshold:
-                self.state = "PHASE_1"
+                self.state = self.active_phase
                 self.phase_start_angle = angle
             elif self.start_phase == "eccentric" and velocity > self.velocity_threshold:
-                self.state = "PHASE_1"
+                self.state = self.active_phase
                 self.phase_start_angle = angle
             return
 
-        if self.state == "PHASE_1":
+        if self.state == self.active_phase:
             if self.phase_start_angle is None:
                 return
 
             rom = abs(angle - self.phase_start_angle)
             if self.start_phase == "concentric" and velocity > self.velocity_threshold and rom >= self.min_rom:
-                self.state = "PHASE_2"
+                self.state = self.return_phase
                 self._phase2_peak = angle
             elif self.start_phase == "eccentric" and velocity < -self.velocity_threshold and rom >= self.min_rom:
-                self.state = "PHASE_2"
+                self.state = self.return_phase
                 self._phase2_peak = angle
             return
 
-        if self.state == "PHASE_2":
+        if self.state == self.return_phase:
             if self._phase2_peak is None:
                 return
 

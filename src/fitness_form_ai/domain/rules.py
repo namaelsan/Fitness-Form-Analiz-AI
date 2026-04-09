@@ -64,25 +64,6 @@ class MetricRule(Rule):
         return f"{value:.3f}"
 
 
-class SpeedRule(Rule):
-    def __init__(self, rule_name: str, max_speed: float) -> None:
-        super().__init__(rule_name)
-        self.max_speed = max_speed
-
-    def apply(self, rep_data: list[RepFrame]) -> bool:
-        if not rep_data:
-            return True
-        max_rep_speed = max(abs(frame.velocity) for frame in rep_data)
-        return max_rep_speed <= self.max_speed
-
-    def get_current_value(self, landmarks: dict[str, object]) -> float:
-        return 0.0
-
-    def describe_current(self, context: RuleContext) -> str:
-        speed = 0.0 if context.current_frame is None else abs(context.current_frame.velocity)
-        return f"speed {speed:.0f} deg/s / max {self.max_speed:.0f}"
-
-
 class RangeRule(MetricRule):
     def __init__(
         self,
@@ -273,5 +254,4 @@ class TempoRule(Rule):
         if not parts:
             return "evaluated at rep end"
         return ", ".join(parts)
-
 
