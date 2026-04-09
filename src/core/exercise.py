@@ -27,3 +27,13 @@ class Exercise(ABC):
             
         return True, ""
 
+    def get_rule_states(self, landmarks: dict) -> List[Tuple[str, float]]:
+        """
+        Returns current value for each rule.
+        """
+        states = []
+        for rule in self.rules:
+            val = rule.get_current_value(landmarks)
+            states.append((rule.rule_name, val))
+        return states
+

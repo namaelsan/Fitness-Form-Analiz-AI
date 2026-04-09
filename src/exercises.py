@@ -8,10 +8,10 @@ class OneArmDumbellCurl(Exercise):
         super().__init__(
             "One Arm Dumbell Curl", 
             [
-                AngleRule("Elbow angle rule", ['LEFT_SHOULDER', 'LEFT_ELBOW', 'LEFT_WRIST'], (0, 150)),
-                AngleRule("Upper Arm Still", ['LEFT_HIP', 'LEFT_SHOULDER', 'LEFT_ELBOW'], (0, 70))
+                # AngleRule("Elbow angle rule", ['RIGHT_SHOULDER', 'RIGHT_ELBOW', 'RIGHT_WRIST'], (0, 150)),
+                AngleRule("Upper Arm Still", ['RIGHT_HIP', 'RIGHT_SHOULDER', 'RIGHT_ELBOW'], (0, 70))
             ],
-            primary_joints=['LEFT_SHOULDER', 'LEFT_ELBOW', 'LEFT_WRIST'],
+            primary_joints=['RIGHT_SHOULDER', 'RIGHT_ELBOW', 'RIGHT_WRIST'],
             start_phase="concentric"
         )
 
@@ -21,10 +21,10 @@ class Squat(Exercise):
             "Squat", 
             [
                 AngleRule("Knee angle rule", ['LEFT_HIP', 'LEFT_KNEE', 'LEFT_ANKLE'], (50, 180)),
-                AngleRule("Straight Back", ['LEFT_SHOULDER', 'LEFT_HIP', 'LEFT_KNEE'], (100, 180))
+                # AngleRule("Straight Back", ['LEFT_SHOULDER', 'LEFT_HIP', 'LEFT_KNEE'], (100, 180))
             ],
             primary_joints=['LEFT_HIP', 'LEFT_KNEE', 'LEFT_ANKLE'],
-            start_phase="concentric"
+            start_phase="eccentric"
         )
 
 class PushUp(Exercise):

@@ -116,6 +116,12 @@ class FitnessApp:
         if dpg.does_item_exist("play_pause_btn"):
             dpg.set_item_label("play_pause_btn", "Pause")
             
+        # Update rule display elements in GUI
+        if dpg.does_item_exist("rules_group"):
+            dpg.delete_item("rules_group", children_only=True)
+            for rule in self.exercise.rules:
+                dpg.add_text(f"{rule.rule_name}: 0°", parent="rules_group", tag=f"rule_val_{rule.rule_name}")
+            
     def on_play_pause(self, sender, app_data):
         if self.video_path is None or self.video_path == "":
             return # Webcam is always "playing" for now
@@ -227,6 +233,11 @@ class FitnessApp:
                     dpg.add_separator()
                     dpg.add_text("Tracking Stats:", color=(100, 200, 255, 255))
                     dpg.add_text("Angle: 0°", id="angle_text")
+                    dpg.add_spacer(height=5)
+                    dpg.add_text("Rule States:", color=(150, 255, 150, 255))
+                    with dpg.group(tag="rules_group"):
+                        pass
+                    dpg.add_spacer(height=5)
                     dpg.add_text("Reps: 0 / 0", id="rep_count")
                     dpg.add_text("State: ...", id="tracker_state")
                     dpg.add_text("Message: ...", id="last_msg", wrap=280)
@@ -320,6 +331,14 @@ class FitnessApp:
             
             dpg.set_value("rep_count", f"Reps: {self.valid_reps} / {self.total_reps}")
             dpg.set_value("tracker_state", f"State: {self.tracker.state}")
+
+            # Update all rule angles
+            rule_states = self.exercise.get_rule_states(landmarks)
+            for rule_name, val in rule_states:
+                tag = f"rule_val_{rule_name}"
+                if dpg.does_item_exist(tag):
+                    dpg.set_value(tag, f"{rule_name}: {int(val)}°")
+
             if self.last_reason:
                 dpg.set_value("last_msg", f"Message: {self.last_reason}")
 

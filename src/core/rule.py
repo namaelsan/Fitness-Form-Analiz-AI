@@ -12,6 +12,13 @@ class Rule(ABC):
         Returns True if rule is satisfied over the completed repetition, otherwise False.
         """
         pass
+
+    @abstractmethod
+    def get_current_value(self, landmarks: dict) -> float:
+        """
+        Returns the current value (e.g. angle) for this rule based on landmarks.
+        """
+        pass
     
 class SpeedRule(Rule):
     def __init__(self, rule_name: str, joints: List[str], max_speed: float):
@@ -25,6 +32,11 @@ class SpeedRule(Rule):
             
         max_rep_speed = max(abs(frame.velocity) for frame in rep_data)
         return max_rep_speed <= self.max_speed
+
+    def get_current_value(self, landmarks: dict) -> float:
+        # SpeedRule doesn't depend on landmarks alone, but we could return 0.0 or last frame velocity if we had it.
+        # For now, let's just return 0.0.
+        return 0.0
     
 
 class AngleRule(Rule):
@@ -55,3 +67,16 @@ class AngleRule(Rule):
         
         # Ensure the entire repetition stays within the defined boundaries (0 to 180)
         return min_angle >= self.angle_range[0] and max_angle <= self.angle_range[1]
+
+    def get_current_value(self, landmarks: dict) -> float:
+        if not landmarks or not self.joints:
+            return 0.0
+        
+        from util import read_landmark, calculate_angle_3d
+        try:
+            joints_data = [read_landmark(j, landmarks) for j in self.joints]
+            if None in joints_data:
+                return 0.0
+            return calculate_angle_3d(joints_data)
+        except Exception:
+            return 0.0
