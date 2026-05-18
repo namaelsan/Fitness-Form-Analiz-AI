@@ -25,9 +25,14 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.8.0",
 ]
+eval = [
+  "matplotlib>=3.8",
+  "seaborn>=0.13",
+]
 
 [project.scripts]
 fitness-form-ai = "fitness_form_ai.cli:main"
+fitness-form-evaluate = "fitness_form_ai.evaluate_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fitness_form_ai"]

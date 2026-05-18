@@ -14,6 +14,8 @@ SUPPORTED_MODELS: Final[tuple[str, ...]] = (
     "mediapipe-full",
     "mediapipe-heavy",
     "yolov8",
+    "movenet-lightning",
+    "movenet-thunder",
 )
 
 
