@@ -9,12 +9,14 @@ import numpy as np
 
 from fitness_form_ai.app.catalog import EXERCISE_REGISTRY, MODEL_FACTORY
 from fitness_form_ai.app.config import TrackingConfig
+from fitness_form_ai.app.logger import SessionLogger
 from fitness_form_ai.domain.exercise import Exercise
 from fitness_form_ai.domain.rep_frame import RepFrame
 from fitness_form_ai.domain.rules import RuleContext
+from fitness_form_ai.domain.smoother import AdaptiveSmoother
 from fitness_form_ai.domain.tracker import RepTracker
 from fitness_form_ai.inference.base import PoseModel
-from fitness_form_ai.utils.geometry import calculate_angle_3d
+from fitness_form_ai.utils.geometry import calculate_angle_3d, letterbox_resize
 from fitness_form_ai.utils.landmarks import read_landmark
 
 
@@ -54,6 +56,8 @@ class TrackingSession:
         self.video_start_time = 0.0
         self.is_playing = True
 
+        self._logger: SessionLogger | None = None
+
     def initialize(self) -> None:
         self._release_video_capture()
         self._release_model()
@@ -66,6 +70,8 @@ class TrackingSession:
         self.tracker = RepTracker(
             start_phase=self.exercise.start_phase,
             min_rom=self.config.min_rom,
+            smoother=self._build_smoother(),
+            confirm_frames=self.config.confirm_frames,
         )
         self.valid_reps = 0
         self.total_reps = 0
@@ -91,6 +97,8 @@ class TrackingSession:
         self.tracker = RepTracker(
             start_phase=self.exercise.start_phase,
             min_rom=self.config.min_rom,
+            smoother=self._build_smoother(),
+            confirm_frames=self.config.confirm_frames,
         )
         self.valid_reps = 0
         self.total_reps = 0
@@ -146,9 +154,10 @@ class TrackingSession:
             self.video_start_time = time.time()
             return self._empty_outcome()
 
-        frame = cv2.resize(
+        frame = letterbox_resize(
             frame,
-            (self.config.texture_width, self.config.texture_height),
+            self.config.texture_width,
+            self.config.texture_height,
         )
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = self.model.process_image(image_rgb)
@@ -181,6 +190,16 @@ class TrackingSession:
                 )
 
         self.model.draw_landmarks(image_bgr, result)
+
+        if self._logger is not None:
+            self._logger.log_frame(
+                timestamp=time.time(),
+                angle=angle,
+                tracker_state=self.tracker.state,
+                smoothing_window=self.tracker.smoothing_window,
+                rule_states=rule_states,
+            )
+
         return FrameOutcome(
             image_bgr=image_bgr,
             angle=angle,
@@ -226,6 +245,29 @@ class TrackingSession:
         else:
             self.last_message = f"INVALID: {reason}"
 
+        if self._logger is not None:
+            all_rules = self.exercise.rules
+            failed = [r.rule_name for r in all_rules if not r.apply(rep_data)]
+            passed = [r.rule_name for r in all_rules if r.apply(rep_data)]
+            metric_series: dict[str, list[float]] = {}
+            for rule in all_rules:
+                if hasattr(rule, "metric"):
+                    series = rule.metric.series(rep_data)
+                    if series:
+                        metric_series[rule.rule_name] = series
+            duration = (
+                rep_data[-1].timestamp - rep_data[0].timestamp
+                if len(rep_data) >= 2 else 0.0
+            )
+            self._logger.log_rep(
+                is_valid=is_valid,
+                failed_rules=failed,
+                passed_rules=passed,
+                metric_series=metric_series,
+                duration_s=duration,
+                frame_count=len(rep_data),
+            )
+
     def _sync_video_position(self) -> None:
         if self.video_capture is None or self.video_path is None or not self.is_playing:
             return
@@ -250,6 +292,45 @@ class TrackingSession:
             except Exception:
                 pass
             self.video_capture = None
+
+    # ------------------------------------------------------------------
+    # Logging
+    # ------------------------------------------------------------------
+
+    @property
+    def is_logging(self) -> bool:
+        return self._logger is not None
+
+    def start_logging(self, log_dir: Path) -> Path:
+        """Create a new logger for this session and return the planned log path."""
+        self._logger = SessionLogger(
+            log_dir=log_dir,
+            exercise=self.exercise_name,
+            model=self.model_name,
+            video_source=self.video_path,
+        )
+        # Touch the path so the caller can display it immediately.
+        self._logger._log_dir.mkdir(parents=True, exist_ok=True)
+        ts = self._logger._started_at.strftime("%Y%m%d_%H%M%S")
+        planned = log_dir / f"session_{self.exercise_name}_{ts}.json"
+        self._logger._path = planned
+        return planned
+
+    def stop_logging(self) -> Path | None:
+        """Flush the current log to disk and return the saved path."""
+        if self._logger is None:
+            return None
+        path = self._logger.save()
+        self._logger = None
+        return path
+
+    def _build_smoother(self) -> AdaptiveSmoother:
+        return AdaptiveSmoother(
+            target_window_ms=self.config.smooth_target_window_ms,
+            ema_alpha=self.config.smooth_ema_alpha,
+            min_frames=self.config.smooth_min_frames,
+            max_frames=self.config.smooth_max_frames,
+        )
 
     def _release_model(self) -> None:
         if self.model is not None:

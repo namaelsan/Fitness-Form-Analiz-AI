@@ -1,21 +1,48 @@
 from __future__ import annotations
 
 from fitness_form_ai.domain.rep_frame import RepFrame
+from fitness_form_ai.domain.smoother import AdaptiveSmoother
 
 
 class RepTracker:
-    def __init__(self, start_phase: str = "concentric", min_rom: float = 20.0) -> None:
+    def __init__(
+        self,
+        start_phase: str = "concentric",
+        min_rom: float = 20.0,
+        smoother: AdaptiveSmoother | None = None,
+        confirm_frames: int = 3,
+    ) -> None:
+        self.start_phase = start_phase
+        self.min_rom = min_rom
+        self.velocity_threshold = 10.0
+        self.confirm_frames = confirm_frames
+
+        self._smoother = smoother if smoother is not None else AdaptiveSmoother()
+
         self.angle_history: list[RepFrame] = []
         self.state = "IDLE"
         self._current_rep_data: list[RepFrame] = []
 
-        self.start_phase = start_phase
-        self.min_rom = min_rom
         self.phase_start_angle: float | None = None
         self._phase2_peak: float | None = None
 
-        self.smoothing_window = 5
-        self.velocity_threshold = 10.0
+        # Bug 1 fix: track previous smoothed angle so velocity is
+        # always smoothed-vs-smoothed, never smoothed-vs-raw.
+        self._last_smoothed: float | None = None
+        self._last_smoothed_ts: float | None = None
+
+        # Bug 2 fix: count consecutive frames that satisfy the current
+        # transition condition before committing to a state change.
+        self._trigger_count: int = 0
+
+    # ------------------------------------------------------------------
+    # Read-only properties
+    # ------------------------------------------------------------------
+
+    @property
+    def smoothing_window(self) -> int:
+        """Current adaptive smoothing window size (in frames)."""
+        return self._smoother.window_size
 
     @property
     def active_phase(self) -> str:
@@ -25,12 +52,40 @@ class RepTracker:
     def return_phase(self) -> str:
         return "ECCENTRIC" if self.start_phase == "concentric" else "CONCENTRIC"
 
+    @property
+    def current_velocity(self) -> float:
+        if not self.angle_history:
+            return 0.0
+        return self.angle_history[-1].velocity
+
+    @property
+    def current_rep_duration(self) -> float:
+        if len(self._current_rep_data) < 2:
+            return 0.0
+        return self._current_rep_data[-1].timestamp - self._current_rep_data[0].timestamp
+
+    # ------------------------------------------------------------------
+    # Main update
+    # ------------------------------------------------------------------
+
     def add_frame(self, angle: float, timestamp: float, landmarks: object = None) -> bool:
+        # Update adaptive smoother with inter-frame interval.
+        if self.angle_history:
+            interval_ms = (timestamp - self.angle_history[-1].timestamp) * 1000.0
+            self._smoother.update(interval_ms)
+
         frame = RepFrame(angle=angle, timestamp=timestamp, landmarks=landmarks)
         self.angle_history.append(frame)
 
         smoothed_angle = self._smooth_angle()
+
+        # Bug 1 fix: compute velocity from smoothed-vs-smoothed.
         velocity = self._calculate_velocity(smoothed_angle, timestamp)
+
+        # Store smoothed values for the next frame's velocity calculation.
+        self._last_smoothed = smoothed_angle
+        self._last_smoothed_ts = timestamp
+
         self.angle_history[-1].velocity = velocity
 
         self._current_rep_data.append(
@@ -51,73 +106,81 @@ class RepTracker:
         rep_data = self._current_rep_data.copy()
         self._current_rep_data.clear()
         self.state = "IDLE"
+        self._trigger_count = 0
 
         if len(self.angle_history) > 100:
             self.angle_history = self.angle_history[-50:]
         return rep_data
 
-    @property
-    def current_velocity(self) -> float:
-        if not self.angle_history:
-            return 0.0
-        return self.angle_history[-1].velocity
-
-    @property
-    def current_rep_duration(self) -> float:
-        if len(self._current_rep_data) < 2:
-            return 0.0
-        return self._current_rep_data[-1].timestamp - self._current_rep_data[0].timestamp
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
 
     def _smooth_angle(self) -> float:
-        if len(self.angle_history) < self.smoothing_window:
-            return self.angle_history[-1].angle
-
-        recent_angles = [frame.angle for frame in self.angle_history[-self.smoothing_window :]]
-        return sum(recent_angles) / len(recent_angles)
+        window = self._smoother.window_size
+        recent = (
+            self.angle_history[-window:]
+            if len(self.angle_history) >= window
+            else self.angle_history
+        )
+        return sum(f.angle for f in recent) / len(recent)
 
     def _calculate_velocity(self, smoothed_angle: float, timestamp: float) -> float:
-        if len(self.angle_history) < 2:
+        """Velocity in degrees/second, always computed from smoothed-vs-smoothed."""
+        if self._last_smoothed is None or self._last_smoothed_ts is None:
             return 0.0
-
-        prev_frame = self.angle_history[-2]
-        time_diff = timestamp - prev_frame.timestamp
-        if time_diff <= 0:
+        dt = timestamp - self._last_smoothed_ts
+        if dt <= 0:
             return 0.0
-
-        angle_diff = smoothed_angle - prev_frame.angle
-        return angle_diff / time_diff
+        return (smoothed_angle - self._last_smoothed) / dt
 
     def _update_state(self, angle: float, velocity: float) -> None:
+        """State machine with per-transition debounce (confirm_frames)."""
+
         if self.state == "IDLE":
-            if self.start_phase == "concentric" and velocity < -self.velocity_threshold:
-                self.state = self.active_phase
-                self.phase_start_angle = angle
-            elif self.start_phase == "eccentric" and velocity > self.velocity_threshold:
-                self.state = self.active_phase
-                self.phase_start_angle = angle
+            # Both concentric-first and eccentric-first exercises begin with the
+            # primary joint angle *decreasing* (curl: elbow flexes; squat: knee
+            # bends), so the onset trigger is always a sufficiently negative velocity.
+            triggered = velocity < -self.velocity_threshold
+            if triggered:
+                self._trigger_count += 1
+                if self._trigger_count >= self.confirm_frames:
+                    self.state = self.active_phase
+                    self.phase_start_angle = angle
+                    self._trigger_count = 0
+            else:
+                self._trigger_count = 0
             return
 
         if self.state == self.active_phase:
             if self.phase_start_angle is None:
                 return
-
             rom = abs(angle - self.phase_start_angle)
-            if self.start_phase == "concentric" and velocity > self.velocity_threshold and rom >= self.min_rom:
-                self.state = self.return_phase
-                self._phase2_peak = angle
-            elif self.start_phase == "eccentric" and velocity < -self.velocity_threshold and rom >= self.min_rom:
-                self.state = self.return_phase
-                self._phase2_peak = angle
+            # The return phase starts when the angle reverses (increases) after
+            # enough ROM — same direction for both start_phase variants.
+            triggered = velocity > self.velocity_threshold and rom >= self.min_rom
+            if triggered:
+                self._trigger_count += 1
+                if self._trigger_count >= self.confirm_frames:
+                    self._phase2_peak = angle
+                    self.state = self.return_phase
+                    self._trigger_count = 0
+            else:
+                self._trigger_count = 0
             return
 
         if self.state == self.return_phase:
             if self._phase2_peak is None:
                 return
-
             rom = abs(angle - self._phase2_peak)
-            if self.start_phase == "concentric":
-                if velocity < self.velocity_threshold and rom >= self.min_rom:
+            triggered = (
+                (self.start_phase == "concentric" and velocity > -self.velocity_threshold and rom >= self.min_rom)
+                or (self.start_phase == "eccentric" and velocity < self.velocity_threshold and rom >= self.min_rom)
+            )
+            if triggered:
+                self._trigger_count += 1
+                if self._trigger_count >= self.confirm_frames:
                     self.state = "COMPLETED"
-            elif self.start_phase == "eccentric":
-                if velocity > -self.velocity_threshold and rom >= self.min_rom:
-                    self.state = "COMPLETED"
+                    self._trigger_count = 0
+            else:
+                self._trigger_count = 0

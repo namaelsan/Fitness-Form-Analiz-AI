@@ -62,7 +62,10 @@ class MoveNetModel(PoseModel):
         # MoveNet requires a [1, input_size, input_size, 3] float32 or int32 depending on model.
         # Float16 model usually takes int32 or float32. We'll use int32.
         import tensorflow as tf
-        
+
+        # Remember original shape so extract_landmarks can de-pad coordinates.
+        self._last_image_shape: tuple[int, int, int] = image.shape
+
         # Create a copy and resize
         image_resized = tf.image.resize_with_pad(image, self.input_size, self.input_size)
         input_dtype = self.input_details[0]['dtype']
@@ -72,13 +75,31 @@ class MoveNetModel(PoseModel):
         self.interpreter.set_tensor(self.input_details[0]['index'], input_image.numpy())
         self.interpreter.invoke()
         keypoints_with_scores = self.interpreter.get_tensor(self.output_details[0]['index'])
-        
+
         return keypoints_with_scores
 
     def extract_landmarks(self, results: Any) -> dict[str, LandmarkPoint] | None:
-        # results shape: [1, 1, 17, 3] -> (y, x, score) normalized to [0, 1]
+        # results shape: [1, 1, 17, 3] -> (y, x, score) normalized to padded square [0, 1]
         keypoints = results[0, 0, :, :]
         landmarks: dict[str, LandmarkPoint] = {}
+
+        # De-pad normalized coordinates so they are relative to the original image,
+        # matching the convention used by MediaPipe.
+        image_shape = getattr(self, "_last_image_shape", None)
+        if image_shape is not None:
+            h, w = image_shape[:2]
+            S = self.input_size
+            if w >= h:
+                scale = S / w
+                pad_y = (S - h * scale) / 2
+                pad_x = 0.0
+            else:
+                scale = S / h
+                pad_x = (S - w * scale) / 2
+                pad_y = 0.0
+        else:
+            h = w = S = scale = 1
+            pad_x = pad_y = 0.0
 
         for index, name in self.keypoint_mapping.items():
             if index >= len(keypoints):
@@ -86,15 +107,34 @@ class MoveNetModel(PoseModel):
             y, x, confidence = keypoints[index]
             if confidence <= 0.3:
                 continue
-            # x and y are normalized, we output normalized like MediaPipe
-            landmarks[name] = LandmarkPoint(x=float(x), y=float(y), z=0.0)
+            if image_shape is not None:
+                x_out = (float(x) * S - pad_x) / (scale * w)
+                y_out = (float(y) * S - pad_y) / (scale * h)
+            else:
+                x_out, y_out = float(x), float(y)
+            landmarks[name] = LandmarkPoint(x=x_out, y=y_out, z=0.0)
 
         return landmarks or None
+
+    def _keypoint_to_image_coords(self, y_n: float, x_n: float, h: int, w: int) -> tuple[int, int]:
+        """Inverse of tf.image.resize_with_pad: map normalized padded-square coords to original image pixels."""
+        S = self.input_size
+        if w >= h:
+            scale = S / w
+            pad_y = (S - h * scale) / 2
+            pad_x = 0.0
+        else:
+            scale = S / h
+            pad_x = (S - w * scale) / 2
+            pad_y = 0.0
+        px = int((x_n * S - pad_x) / scale)
+        py = int((y_n * S - pad_y) / scale)
+        return px, py
 
     def draw_landmarks(self, image: np.ndarray, results: Any) -> None:
         keypoints = results[0, 0, :, :]
         h, w, _ = image.shape
-        
+
         # Define COCO connections
         connections = [
             (5, 7), (7, 9),      # left arm
@@ -106,22 +146,23 @@ class MoveNetModel(PoseModel):
             (0, 1), (1, 3),      # left face
             (0, 2), (2, 4)       # right face
         ]
-        
+
         # Draw connections
         for p1, p2 in connections:
             if p1 < len(keypoints) and p2 < len(keypoints):
                 y1, x1, conf1 = keypoints[p1]
                 y2, x2, conf2 = keypoints[p2]
                 if conf1 > 0.3 and conf2 > 0.3:
-                    pt1 = (int(x1 * w), int(y1 * h))
-                    pt2 = (int(x2 * w), int(y2 * h))
+                    pt1 = self._keypoint_to_image_coords(y1, x1, h, w)
+                    pt2 = self._keypoint_to_image_coords(y2, x2, h, w)
                     cv2.line(image, pt1, pt2, (0, 255, 0), 2)
-        
+
         # Draw keypoints
         for index in range(len(keypoints)):
             y, x, conf = keypoints[index]
             if conf > 0.3:
-                cv2.circle(image, (int(x * w), int(y * h)), 4, (0, 0, 255), -1)
+                pt = self._keypoint_to_image_coords(y, x, h, w)
+                cv2.circle(image, pt, 4, (0, 0, 255), -1)
 
     def release(self) -> None:
         self.interpreter = None

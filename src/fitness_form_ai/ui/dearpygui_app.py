@@ -9,6 +9,8 @@ import numpy as np
 from fitness_form_ai.app.config import AppConfig, SUPPORTED_EXERCISES, SUPPORTED_MODELS, TrackingConfig
 from fitness_form_ai.app.session import TrackingSession
 
+_DEFAULT_LOG_DIR = Path("logs")
+
 
 class FitnessApp:
     def __init__(self, config: AppConfig) -> None:
@@ -234,6 +236,25 @@ class FitnessApp:
             dpg.add_text("Reps: 0 / 0", tag="rep_count")
             dpg.add_text("State: ...", tag="tracker_state")
             dpg.add_text("Message: ...", tag="last_msg", wrap=280)
+            dpg.add_spacer(height=20)
+            dpg.add_separator()
+            dpg.add_text("Session Logger:", color=(100, 200, 255, 255))
+            dpg.add_spacer(height=4)
+            dpg.add_input_text(
+                tag="log_dir_input",
+                default_value=str(_DEFAULT_LOG_DIR),
+                label="Log folder",
+                width=200,
+            )
+            dpg.add_spacer(height=4)
+            dpg.add_button(
+                label="Start Logging",
+                callback=self.on_log_toggle,
+                tag="log_toggle_btn",
+                width=-1,
+            )
+            dpg.add_spacer(height=4)
+            dpg.add_text("Idle", tag="log_status", color=(180, 180, 180, 255), wrap=280)
 
     def _rebuild_rule_state_panel(self) -> None:
         if not dpg.does_item_exist("rules_group"):
@@ -263,6 +284,25 @@ class FitnessApp:
                 "play_pause_btn",
                 "Pause" if self.session.is_playing else "Play",
             )
+
+    def on_log_toggle(self, sender: object = None, app_data: object = None, user_data: object = None) -> None:
+        del sender, app_data, user_data
+        if self.session.is_logging:
+            saved = self.session.stop_logging()
+            dpg.set_item_label("log_toggle_btn", "Start Logging")
+            dpg.configure_item("log_toggle_btn", enabled=True)
+            if saved:
+                dpg.set_value("log_status", f"Saved: {saved.name}")
+                dpg.configure_item("log_status", color=(80, 220, 80, 255))
+            else:
+                dpg.set_value("log_status", "Nothing to save")
+                dpg.configure_item("log_status", color=(180, 180, 180, 255))
+        else:
+            log_dir = Path(dpg.get_value("log_dir_input") or _DEFAULT_LOG_DIR)
+            planned = self.session.start_logging(log_dir)
+            dpg.set_item_label("log_toggle_btn", "Stop Logging")
+            dpg.set_value("log_status", f"Recording → {planned.name}")
+            dpg.configure_item("log_status", color=(255, 80, 80, 255))
 
     def _sync_model_selector(self) -> None:
         if dpg.does_item_exist("model_selector"):

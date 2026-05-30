@@ -30,6 +30,18 @@ class Rule(ABC):
     def describe_current(self, context: RuleContext) -> str:
         raise NotImplementedError
 
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        """Return the single scalar this rule's threshold is compared against.
+
+        This is the value that determines pass/fail for the rep (e.g. the
+        deepest angle for a depth rule, the peak velocity for a tempo rule).
+        Returning ``None`` means the rule had no usable data for the rep.
+
+        Subclasses override this so the benchmark never has to ``isinstance``
+        its way through the rule hierarchy to recover a reported value.
+        """
+        return None
+
 
 class MetricRule(Rule):
     def __init__(self, rule_name: str, metric: Metric) -> None:
@@ -82,6 +94,19 @@ class RangeRule(MetricRule):
             return False
         return min(values) >= self.angle_range[0] and max(values) <= self.angle_range[1]
 
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        values = self.metric.series(rep_data)
+        if not values:
+            return None
+        lo, hi = self.angle_range
+        mn, mx = min(values), max(values)
+        # If the band is breached, report the more-violated extreme; otherwise
+        # report the extreme with the smaller margin so the reader sees how
+        # close the rep came to failing.
+        if mx > hi or mn < lo:
+            return mx if (mx - hi) >= (lo - mn) else mn
+        return mx if (hi - mx) <= (mn - lo) else mn
+
     def describe_current(self, context: RuleContext) -> str:
         value = self._current_metric_value(context)
         if value is None:
@@ -103,6 +128,10 @@ class MinValueRule(MetricRule):
             return False
         return max(values) >= self.minimum
 
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        values = self.metric.series(rep_data)
+        return max(values) if values else None
+
     def describe_current(self, context: RuleContext) -> str:
         value = self._current_metric_value(context)
         if value is None:
@@ -120,6 +149,10 @@ class MaxValueRule(MetricRule):
         if not values:
             return False
         return max(values) <= self.maximum
+
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        values = self.metric.series(rep_data)
+        return max(values) if values else None
 
     def describe_current(self, context: RuleContext) -> str:
         value = self._current_metric_value(context)
@@ -139,6 +172,10 @@ class MaxDepthRule(MetricRule):
             return False
         return min(values) <= self.threshold
 
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        values = self.metric.series(rep_data)
+        return min(values) if values else None
+
     def describe_current(self, context: RuleContext) -> str:
         value = self._current_metric_value(context)
         if value is None:
@@ -156,6 +193,10 @@ class StabilityRule(MetricRule):
         if not values:
             return False
         return (max(values) - min(values)) <= self.max_delta
+
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        values = self.metric.series(rep_data)
+        return (max(values) - min(values)) if values else None
 
     def describe_current(self, context: RuleContext) -> str:
         value = self._current_metric_value(context)
@@ -182,6 +223,10 @@ class KneeValgusRule(Rule):
         if not ratios:
             return False
         return min(ratios) >= self.min_ratio
+
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        ratios = self._ratio_series(rep_data)
+        return min(ratios) if ratios else None
 
     def get_current_value(self, landmarks: dict[str, object]) -> float:
         knee_width = self.knee_width_metric.from_landmarks(landmarks)
@@ -218,6 +263,34 @@ class KneeValgusRule(Rule):
         return ratios
 
 
+class FloorRule(MetricRule):
+    """Passes when the minimum observed value stays at or above *minimum*.
+
+    Use this when a metric must never drop below a threshold — e.g. the
+    shoulder-ear distance must not collapse (shoulder shrug).
+    """
+
+    def __init__(self, rule_name: str, metric: Metric, minimum: float) -> None:
+        super().__init__(rule_name, metric)
+        self.minimum = minimum
+
+    def apply(self, rep_data: list[RepFrame]) -> bool:
+        values = self.metric.series(rep_data)
+        if not values:
+            return False
+        return min(values) >= self.minimum
+
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        values = self.metric.series(rep_data)
+        return min(values) if values else None
+
+    def describe_current(self, context: RuleContext) -> str:
+        value = self._current_metric_value(context)
+        if value is None:
+            return f"target >= {self._format_value(self.minimum)}"
+        return f"{self.metric.label}: {self._format_value(value)} (floor >= {self._format_value(self.minimum)})"
+
+
 class TempoRule(Rule):
     def __init__(
         self,
@@ -241,6 +314,12 @@ class TempoRule(Rule):
             if duration < self.min_duration:
                 return False
         return True
+
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        """Peak absolute angular velocity over the rep (deg/s)."""
+        if not rep_data:
+            return None
+        return max(abs(frame.velocity) for frame in rep_data)
 
     def get_current_value(self, landmarks: dict[str, object]) -> float:
         return 0.0

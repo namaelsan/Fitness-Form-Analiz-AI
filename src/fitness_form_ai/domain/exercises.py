@@ -7,12 +7,13 @@ from fitness_form_ai.domain.metrics import (
     TrackerAngleMetric,
 )
 from fitness_form_ai.domain.rules import (
+    FloorRule,
     KneeValgusRule,
+    MaxDepthRule,
     MaxValueRule,
     MinValueRule,
     RangeRule,
     StabilityRule,
-    MaxDepthRule,
     TempoRule,
 )
 
@@ -27,9 +28,9 @@ class OneArmDumbbellCurl(Exercise):
         super().__init__(
             name="One Arm Dumbbell Curl",
             rules=[
-                MinValueRule("Full contraction", elbow_angle, 125),
-                RangeRule("No bottom-shortening", elbow_angle, (35, 175)),
-                StabilityRule("Upper Arm Still", upper_arm_angle, 25),
+                MaxDepthRule("Full contraction", elbow_angle, 75),
+                MinValueRule("Full extension", elbow_angle, 155),
+                StabilityRule("Upper Arm Still", upper_arm_angle, 40),
                 TempoRule("Controlled tempo", max_speed=250, min_duration=1.0),
             ],
             primary_joints=["RIGHT_SHOULDER", "RIGHT_ELBOW", "RIGHT_WRIST"],
@@ -92,10 +93,10 @@ class Deadlift(Exercise):
         super().__init__(
             name="Deadlift",
             rules=[
-                RangeRule("Full hinge range", hip_angle, (45, 180)),
+                MaxDepthRule("Hip hinge depth", hip_angle, 90),
                 RangeRule("Neutral spine", spine_angle, (150, 180)),
                 MaxValueRule("Bar stays close", bar_path, 0.22),
-                RangeRule("Torso angle controlled", shoulder_hip_stack, (5, 65)),
+                RangeRule("Torso angle controlled", shoulder_hip_stack, (0, 65)),
                 TempoRule("No jerking", max_speed=150, min_duration=1.0),
             ],
             primary_joints=["LEFT_SHOULDER", "LEFT_HIP", "LEFT_KNEE"],
@@ -132,7 +133,7 @@ class ShoulderPress(Exercise):
         super().__init__(
             name="Shoulder Press",
             rules=[
-                RangeRule("Full press range", elbow_angle, (55, 180)),
+                MinValueRule("Full press extension", elbow_angle, 160),
                 RangeRule("Wrists stay stacked", arm_stack, (0, 30)),
                 RangeRule("No back overextension", trunk_line, (155, 180)),
                 MaxValueRule("Press stays symmetric", symmetry, 18),
@@ -165,7 +166,7 @@ class LateralRaise(Exercise):
             rules=[
                 RangeRule("Top height stays clean", shoulder_angle, (35, 110)),
                 StabilityRule("Torso stays still", torso_angle, 18),
-                MinValueRule("Shoulder stays depressed", shrug_metric, 0.08),
+                FloorRule("Shoulder stays depressed", shrug_metric, 0.08),
                 RangeRule("Elbow bend stays soft", elbow_angle, (150, 178)),
                 TempoRule("No swinging", max_speed=120, min_duration=1.0),
             ],

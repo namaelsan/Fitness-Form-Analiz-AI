@@ -23,6 +23,7 @@ class ContinuousComparison:
     
     ref_rep_count: int = 0
     model_rep_count: int = 0
+    overlap_frames: int = 0   # frames where BOTH models produced an angle
 
     @property
     def r_squared(self) -> float:
@@ -61,14 +62,24 @@ def compare_results(
             if model_name == reference_model:
                 continue
 
-            ref_angles = []
-            cand_angles = []
-            # Assuming frame lists are aligned and same length
-            for rf, cf in zip(ref.frames, candidate.frames):
-                if rf.primary_angle is not None and cf.primary_angle is not None:
-                    ref_angles.append(rf.primary_angle)
-                    cand_angles.append(cf.primary_angle)
-                    
+            # Align by frame_index, NOT by position: different models drop
+            # different frames, so a positional zip would silently compare
+            # temporally different frames. We index each model's angles by the
+            # source frame number and intersect on the frames both detected.
+            ref_by_idx = {
+                f.frame_index: f.primary_angle
+                for f in ref.frames
+                if f.primary_angle is not None
+            }
+            cand_by_idx = {
+                f.frame_index: f.primary_angle
+                for f in candidate.frames
+                if f.primary_angle is not None
+            }
+            shared = sorted(ref_by_idx.keys() & cand_by_idx.keys())
+            ref_angles = [ref_by_idx[i] for i in shared]
+            cand_angles = [cand_by_idx[i] for i in shared]
+
             if ref_angles:
                 diffs = [c - r for c, r in zip(cand_angles, ref_angles)]
                 mae = sum(abs(d) for d in diffs) / len(diffs)
@@ -101,6 +112,7 @@ def compare_results(
                 angle_corr=corr,
                 ref_rep_count=len(ref.reps),
                 model_rep_count=len(candidate.reps),
+                overlap_frames=len(ref_angles),
             )
             report.comparisons.append(comp)
 

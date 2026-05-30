@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -12,11 +13,33 @@ import numpy as np
 from fitness_form_ai.app.catalog import EXERCISE_REGISTRY
 from fitness_form_ai.domain.exercise import Exercise
 from fitness_form_ai.domain.rep_frame import RepFrame
+from fitness_form_ai.domain.smoother import AdaptiveSmoother
 from fitness_form_ai.domain.tracker import RepTracker
 from fitness_form_ai.inference.base import PoseModel
 from fitness_form_ai.inference.factory import create_pose_model
-from fitness_form_ai.utils.geometry import calculate_angle_3d
+from fitness_form_ai.utils.geometry import calculate_angle_3d, letterbox_resize
 from fitness_form_ai.utils.landmarks import read_landmark
+
+
+@dataclass(slots=True)
+class LiveFrameUpdate:
+    """Snapshot pushed to the live GUI each frame."""
+
+    frame_bgr: np.ndarray          # frame with landmarks drawn
+    model_name: str
+    video_name: str
+    exercise_name: str
+    frame_idx: int
+    total_frames: int              # 0 if unknown
+    mean_fps: float
+    detection_rate: float
+    total_reps: int
+    valid_reps: int
+    job_idx: int                   # 1-based index of current (model × video) job
+    total_jobs: int
+
+
+LiveCallback = Callable[[LiveFrameUpdate], None]
 
 
 @dataclass(slots=True)
@@ -114,6 +137,10 @@ def run_benchmark(
     *,
     resize: tuple[int, int] = (640, 480),
     progress_callback: object = None,
+    live_callback: LiveCallback | None = None,
+    job_idx: int = 1,
+    total_jobs: int = 1,
+    smoother: AdaptiveSmoother | None = None,
 ) -> BenchmarkResult:
     """Run a single benchmark: one model × one video × one exercise."""
 
@@ -126,7 +153,11 @@ def run_benchmark(
     # Build exercise and tracker
     exercise_cls = EXERCISE_REGISTRY.get(exercise_name, EXERCISE_REGISTRY["curl"])
     exercise: Exercise = exercise_cls()
-    tracker = RepTracker(start_phase=exercise.start_phase, min_rom=20.0)
+    tracker = RepTracker(
+        start_phase=exercise.start_phase,
+        min_rom=20.0,
+        smoother=smoother if smoother is not None else AdaptiveSmoother(),
+    )
 
     # Build model
     model: PoseModel = create_pose_model(model_name)
@@ -146,7 +177,7 @@ def run_benchmark(
             if not ok:
                 break
 
-            frame = cv2.resize(frame, resize)
+            frame = letterbox_resize(frame, resize[0], resize[1])
             image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # ---- timed section ----
@@ -158,6 +189,31 @@ def run_benchmark(
 
             latency_ms = (t1 - t0) * 1000.0
             detected = landmarks is not None
+
+            # ---- live preview ----
+            if live_callback is not None:
+                frame_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+                model.draw_landmarks(frame_bgr, raw_result)
+                lats_so_far = [f.latency_ms for f in result.frames]
+                mean_lat = sum(lats_so_far) / len(lats_so_far) if lats_so_far else latency_ms
+                fps_so_far = 1000.0 / mean_lat if mean_lat > 0 else 0.0
+                det_so_far = (
+                    (result.detected_frames + int(detected)) / (len(result.frames) + 1)
+                )
+                live_callback(LiveFrameUpdate(
+                    frame_bgr=frame_bgr,
+                    model_name=model_name,
+                    video_name=video_path.name,
+                    exercise_name=exercise_name,
+                    frame_idx=frame_idx,
+                    total_frames=total_video_frames,
+                    mean_fps=fps_so_far,
+                    detection_rate=det_so_far,
+                    total_reps=rep_counter,
+                    valid_reps=sum(1 for r in result.reps if r.is_valid),
+                    job_idx=job_idx,
+                    total_jobs=total_jobs,
+                ))
 
             result.frames.append(
                 FrameRecord(
@@ -184,59 +240,25 @@ def run_benchmark(
                         rep_data = tracker.extract_rep()
                         if rep_data:
                             is_valid, _reason = exercise.apply_rules(rep_data)
-                            all_rules = [r.rule_name for r in exercise.rules]
                             failed = [
                                 r.rule_name
                                 for r in exercise.rules
                                 if not r.apply(rep_data)
                             ]
-                            passed = [n for n in all_rules if n not in failed]
-                            
-                            # Extract continuous values for each rule over the rep
-                            # Assuming that for values, returning max/min/average over the rep might be needed,
-                            # but simple approach: get the value from the last frame or let the rule compute it
-                            # Actually, `get_current_value(landmarks)` is on Rule. We will just compute the value at the end of the rep or similar, 
-                            # or use the metric logic if possible.
-                            # For simplicity, we can get metric values from the rep_data.
-                            # The easiest way is to use `rule.get_current_value(rep_data[-1].landmarks)` for now, OR for range rules just store min/max?
-                            rule_vals = {}
-                            for rule in exercise.rules:
-                                if hasattr(rule, 'metric'):
-                                    vals = rule.metric.series(rep_data)
-                                    if vals:
-                                        # Depending on rule type, we usually care about the extreme value
-                                        from fitness_form_ai.domain.rules import MaxValueRule, MinValueRule, RangeRule, MaxDepthRule, StabilityRule
-                                        if isinstance(rule, (MaxValueRule, MinValueRule, RangeRule, MaxDepthRule)):
-                                            # store max for MaxValue, min for MaxDepth, etc. Just storing the values range
-                                            # Let's just track the minimum and maximum observed in the rep, or a tuple. 
-                                            # We will track the extreme value relevant to the rule, or just average for simplicity.
-                                            pass
-                                # Actually, rule.describe_current takes context. We can just use the value from rep_data.
-                                # Let's just calculate a simple metric. For now, since rules implement apply(rep_data), we might need
-                                # a way to get the numerical result out of them.
-                            
+                            failed_set = set(failed)
+                            passed = [
+                                r.rule_name
+                                for r in exercise.rules
+                                if r.rule_name not in failed_set
+                            ]
+
+                            # Each rule reports the scalar its own threshold is
+                            # compared against (rule.reduce); no isinstance soup.
                             rule_values = {}
                             for rule in exercise.rules:
-                                if hasattr(rule, 'metric'):
-                                    series = rule.metric.series(rep_data)
-                                    if series:
-                                        # If rule is checking max value, store max of series
-                                        rule_values[rule.rule_name] = sum(series)/len(series) # average for now
-                                        from fitness_form_ai.domain.rules import MaxValueRule, MinValueRule, RangeRule, MaxDepthRule, StabilityRule
-                                        if isinstance(rule, MaxValueRule):
-                                            rule_values[rule.rule_name] = max(series)
-                                        elif isinstance(rule, MinValueRule) or isinstance(rule, MaxDepthRule):
-                                            rule_values[rule.rule_name] = min(series)
-                                        elif isinstance(rule, RangeRule):
-                                            rule_values[rule.rule_name] = max(series) if max(series) > rule.angle_range[1] else min(series) # Pick the worst bound
-                                        elif isinstance(rule, StabilityRule):
-                                            rule_values[rule.rule_name] = max(series) - min(series)
-                                elif "Knee Valgus" in rule.rule_name or hasattr(rule, "min_ratio"):
-                                    # KneeValgusRule
-                                    # ratio series
-                                    ratios = rule._ratio_series(rep_data)
-                                    if ratios:
-                                        rule_values[rule.rule_name] = min(ratios)
+                                value = rule.reduce(rep_data)
+                                if value is not None:
+                                    rule_values[rule.rule_name] = value
 
                             result.reps.append(
                                 RepRecord(
@@ -268,15 +290,21 @@ def run_all_benchmarks(
     *,
     resize: tuple[int, int] = (640, 480),
     verbose: bool = True,
+    live_callback: LiveCallback | None = None,
+    smoother_factory: Callable[[], AdaptiveSmoother] | None = None,
 ) -> list[BenchmarkResult]:
     """Run benchmarks for every (model, video) combination."""
 
     results: list[BenchmarkResult] = []
+    total_jobs = len(model_names) * len(video_paths)
+    job_idx = 0
 
     for video_path in video_paths:
         for model_name in model_names:
+            job_idx += 1
             if verbose:
                 print(f"\n{'='*60}")
+                print(f"  Job {job_idx}/{total_jobs}")
                 print(f"  Model: {model_name}")
                 print(f"  Video: {video_path.name}")
                 print(f"  Exercise: {exercise_name}")
@@ -293,6 +321,12 @@ def run_all_benchmarks(
                 exercise_name,
                 resize=resize,
                 progress_callback=_progress if verbose else None,
+                live_callback=live_callback,
+                job_idx=job_idx,
+                total_jobs=total_jobs,
+                # Each job gets a fresh smoother so one video's FPS estimate
+                # does not bleed into the next.
+                smoother=smoother_factory() if smoother_factory else None,
             )
 
             if verbose:

@@ -16,3 +16,7 @@ __pycache__/
 
 # Results
 results/
+
+# Training
+examples/
+fit3d/

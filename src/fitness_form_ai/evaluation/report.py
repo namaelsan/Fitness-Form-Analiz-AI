@@ -68,6 +68,7 @@ def write_comparison_csv(report: ComparisonReport, output_dir: Path) -> Path:
         "angle_rmse",
         "angle_mae",
         "r_squared",
+        "overlap_frames",
         "ref_rep_count",
         "model_rep_count",
     ]
@@ -84,6 +85,7 @@ def write_comparison_csv(report: ComparisonReport, output_dir: Path) -> Path:
                     "angle_rmse": f"{comp.angle_rmse:.2f}",
                     "angle_mae": f"{comp.angle_mae:.2f}",
                     "r_squared": f"{comp.r_squared:.4f}",
+                    "overlap_frames": comp.overlap_frames,
                     "ref_rep_count": comp.ref_rep_count,
                     "model_rep_count": comp.model_rep_count,
                 }
@@ -102,7 +104,8 @@ def plot_fps_comparison(results: list[BenchmarkResult], output_dir: Path) -> Pat
     import matplotlib.pyplot as plt
     import numpy as np
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    charts_dir = output_dir / "aggregate"
+    charts_dir.mkdir(parents=True, exist_ok=True)
 
     models: list[str] = []
     videos: list[str] = []
@@ -144,7 +147,7 @@ def plot_fps_comparison(results: list[BenchmarkResult], output_dir: Path) -> Pat
     ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
 
-    chart_path = output_dir / "fps_comparison.png"
+    chart_path = charts_dir / "fps_comparison.png"
     fig.savefig(chart_path, dpi=150)
     plt.close(fig)
     print(f"  ✓ {chart_path}")
@@ -159,7 +162,8 @@ def plot_latency_boxplot(results: list[BenchmarkResult], output_dir: Path) -> Pa
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    charts_dir = output_dir / "aggregate"
+    charts_dir.mkdir(parents=True, exist_ok=True)
 
     model_latencies: dict[str, list[float]] = {}
     for r in results:
@@ -181,7 +185,7 @@ def plot_latency_boxplot(results: list[BenchmarkResult], output_dir: Path) -> Pa
     ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
 
-    chart_path = output_dir / "latency_boxplot.png"
+    chart_path = charts_dir / "latency_boxplot.png"
     fig.savefig(chart_path, dpi=150)
     plt.close(fig)
     print(f"  ✓ {chart_path}")
@@ -197,7 +201,6 @@ def plot_angle_correlation(results: list[BenchmarkResult], report: ComparisonRep
     import seaborn as sns
     import numpy as np
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
 
     groups: dict[tuple[str, str], dict[str, BenchmarkResult]] = {}
@@ -213,13 +216,21 @@ def plot_angle_correlation(results: list[BenchmarkResult], report: ComparisonRep
         if not ref_run or not cand_run:
             continue
             
-        ref_angles = []
-        cand_angles = []
-        for rf, cf in zip(ref_run.frames, cand_run.frames):
-            if rf.primary_angle is not None and cf.primary_angle is not None:
-                ref_angles.append(rf.primary_angle)
-                cand_angles.append(cf.primary_angle)
-                
+        # Align by frame_index (see compare.compare_results for rationale).
+        ref_by_idx = {
+            f.frame_index: f.primary_angle
+            for f in ref_run.frames
+            if f.primary_angle is not None
+        }
+        cand_by_idx = {
+            f.frame_index: f.primary_angle
+            for f in cand_run.frames
+            if f.primary_angle is not None
+        }
+        shared = sorted(ref_by_idx.keys() & cand_by_idx.keys())
+        ref_angles = [ref_by_idx[i] for i in shared]
+        cand_angles = [cand_by_idx[i] for i in shared]
+
         if not ref_angles:
             continue
 
@@ -254,8 +265,10 @@ def plot_angle_correlation(results: list[BenchmarkResult], report: ComparisonRep
         
         fig.tight_layout()
 
-        safe_name = f"corr_{comp.model_name}_{video_name}".replace("-", "_")
-        chart_path = output_dir / f"{safe_name}.png"
+        video_dir = output_dir / "correlation" / video_name
+        video_dir.mkdir(parents=True, exist_ok=True)
+        safe_model = comp.model_name.replace("-", "_")
+        chart_path = video_dir / f"{safe_model}.png"
         fig.savefig(chart_path, dpi=150)
         plt.close(fig)
         print(f"  ✓ {chart_path}")
@@ -272,7 +285,8 @@ def plot_jitter_comparison(results: list[BenchmarkResult], output_dir: Path) -> 
     import matplotlib.pyplot as plt
     import numpy as np
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    charts_dir = output_dir / "aggregate"
+    charts_dir.mkdir(parents=True, exist_ok=True)
     
     jitter_by_model: dict[str, list[float]] = {}
     
@@ -309,17 +323,349 @@ def plot_jitter_comparison(results: list[BenchmarkResult], output_dir: Path) -> 
     ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
 
-    chart_path = output_dir / "landmark_jitter.png"
+    chart_path = charts_dir / "landmark_jitter.png"
     fig.savefig(chart_path, dpi=150)
     plt.close(fig)
     print(f"  ✓ {chart_path}")
     return chart_path
 
 
+def write_classification_csv(report: "ClassificationReport", output_dir: Path) -> Path:
+    """Write per-video classification results to CSV."""
+    from fitness_form_ai.evaluation.classification import ClassificationReport  # noqa: F401
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / "classification_results.csv"
+
+    fieldnames = [
+        "video",
+        "exercise",
+        "expected_class",
+        "predicted_class",
+        "correct",
+        "outcome",
+        "expected_violated_rules",
+        "actually_failed_rules",
+    ]
+
+    with open(csv_path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for vcr in report.video_results:
+            writer.writerow({
+                "video": Path(vcr.video_path).name,
+                "exercise": vcr.exercise,
+                "expected_class": vcr.expected_class,
+                "predicted_class": vcr.predicted_class,
+                "correct": vcr.is_correct,
+                "outcome": vcr.outcome,
+                "expected_violated_rules": "|".join(vcr.expected_violated_rules),
+                "actually_failed_rules": "|".join(vcr.actually_failed_rules),
+            })
+
+    print(f"  ✓ {csv_path}")
+    return csv_path
+
+
+def write_exercise_metrics_csv(report: "ClassificationReport", output_dir: Path) -> Path:
+    """Write per-exercise precision / recall / F1 / accuracy to CSV."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / "exercise_metrics.csv"
+
+    fieldnames = [
+        "exercise", "tp", "tn", "fp", "fn", "no_reps",
+        "precision", "recall", "f1", "accuracy", "specificity",
+    ]
+
+    with open(csv_path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for em in report.exercise_metrics.values():
+            writer.writerow({
+                "exercise": em.exercise,
+                "tp": em.tp,
+                "tn": em.tn,
+                "fp": em.fp,
+                "fn": em.fn,
+                "no_reps": em.no_reps,
+                "precision": f"{em.precision:.4f}",
+                "recall": f"{em.recall:.4f}",
+                "f1": f"{em.f1:.4f}",
+                "accuracy": f"{em.accuracy:.4f}",
+                "specificity": f"{em.specificity:.4f}",
+            })
+
+    print(f"  ✓ {csv_path}")
+    return csv_path
+
+
+def write_rule_metrics_csv(report: "ClassificationReport", output_dir: Path) -> Path:
+    """Write per-rule sensitivity to CSV (only rules with labelled casual videos)."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / "rule_metrics.csv"
+
+    fieldnames = ["exercise", "rule_name", "tp", "fn", "sensitivity"]
+
+    with open(csv_path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for rm in report.rule_metrics.values():
+            writer.writerow({
+                "exercise": rm.exercise,
+                "rule_name": rm.rule_name,
+                "tp": rm.tp,
+                "fn": rm.fn,
+                "sensitivity": f"{rm.sensitivity:.4f}",
+            })
+
+    print(f"  ✓ {csv_path}")
+    return csv_path
+
+
+def write_classification_stats_csv(
+    report: "ClassificationReport",
+    labels: "list[VideoLabel]",
+    output_dir: Path,
+) -> Path:
+    """Write bootstrap CIs (clustered by subject) and the majority baseline."""
+    from fitness_form_ai.evaluation.stats import (
+        classification_cis,
+        majority_class_baseline,
+    )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / "classification_stats.csv"
+
+    # Only videos that were actually scored (exclude no_reps) count toward CIs.
+    scored = [vr for vr in report.video_results if vr.outcome in {"TP", "TN", "FP", "FN"}]
+    cis = classification_cis(scored)
+    baseline = majority_class_baseline(labels)
+
+    with open(csv_path, "w", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["metric", "value", "ci_low", "ci_high", "note"])
+        writer.writerow([
+            "accuracy", f"{cis.accuracy.point:.4f}",
+            f"{cis.accuracy.ci_low:.4f}", f"{cis.accuracy.ci_high:.4f}",
+            f"{cis.n_videos} videos / {cis.n_subjects} subjects, 95% cluster bootstrap",
+        ])
+        writer.writerow([
+            "f1", f"{cis.f1.point:.4f}",
+            f"{cis.f1.ci_low:.4f}", f"{cis.f1.ci_high:.4f}", "",
+        ])
+        writer.writerow([
+            f"baseline_accuracy ({baseline.strategy})",
+            f"{baseline.accuracy:.4f}", "", "", "majority-class floor",
+        ])
+        writer.writerow([
+            f"baseline_f1 ({baseline.strategy})",
+            f"{baseline.f1:.4f}", "", "", "",
+        ])
+    print(f"  ✓ {csv_path}")
+    return csv_path
+
+
+def plot_confusion_matrix(report: "ClassificationReport", output_dir: Path) -> Path:
+    """Heatmap grid: one confusion matrix per exercise."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    charts_dir = output_dir / "classification"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+
+    exercises = list(report.exercise_metrics.keys())
+    n = len(exercises)
+    if n == 0:
+        return Path()
+
+    cols = min(n, 3)
+    rows = (n + cols - 1) // cols
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
+    axes_flat = np.array(axes).flatten() if n > 1 else [axes]
+
+    for ax, ex in zip(axes_flat, exercises):
+        em = report.exercise_metrics[ex]
+        matrix = np.array([[em.tn, em.fp], [em.fn, em.tp]])
+        im = ax.imshow(matrix, cmap="Blues", vmin=0)
+        ax.set_xticks([0, 1])
+        ax.set_yticks([0, 1])
+        ax.set_xticklabels(["Pred: proper", "Pred: casual"])
+        ax.set_yticklabels(["Actual: proper", "Actual: casual"])
+        ax.set_title(f"{ex}\nF1={em.f1:.2f}  Acc={em.accuracy:.2f}", fontsize=10)
+        for i in range(2):
+            for j in range(2):
+                ax.text(j, i, str(matrix[i, j]), ha="center", va="center",
+                        fontsize=14, color="black")
+        fig.colorbar(im, ax=ax, shrink=0.7)
+
+    # Hide unused axes
+    for ax in axes_flat[n:]:
+        ax.set_visible(False)
+
+    fig.suptitle("Confusion Matrices by Exercise", fontsize=13, y=1.02)
+    fig.tight_layout()
+    chart_path = charts_dir / "confusion_matrices.png"
+    fig.savefig(chart_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  ✓ {chart_path}")
+    return chart_path
+
+
+def plot_f1_bar(report: "ClassificationReport", output_dir: Path) -> Path:
+    """Bar chart of F1 score per exercise."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    charts_dir = output_dir / "classification"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+
+    exercises = list(report.exercise_metrics.keys())
+    f1_scores = [report.exercise_metrics[ex].f1 for ex in exercises]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    colors = ["#4C72B0", "#55A868", "#C44E52", "#8172B2", "#CCB974"]
+    bars = ax.bar(exercises, f1_scores, color=colors[: len(exercises)], zorder=3)
+
+    for bar, val in zip(bars, f1_scores):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.01,
+            f"{val:.2f}",
+            ha="center", va="bottom", fontsize=11,
+        )
+
+    ax.set_ylim(0, 1.1)
+    ax.set_ylabel("F1 Score")
+    ax.set_title("Form Classification F1 Score per Exercise")
+    ax.axhline(1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+
+    chart_path = charts_dir / "f1_per_exercise.png"
+    fig.savefig(chart_path, dpi=150)
+    plt.close(fig)
+    print(f"  ✓ {chart_path}")
+    return chart_path
+
+
+def plot_rule_sensitivity(report: "ClassificationReport", output_dir: Path) -> Path:
+    """Horizontal bar chart of per-rule detection sensitivity."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    charts_dir = output_dir / "classification"
+    charts_dir.mkdir(parents=True, exist_ok=True)
+
+    if not report.rule_metrics:
+        return Path()
+
+    labels_list = [f"{rm.exercise}\n{rm.rule_name}" for rm in report.rule_metrics.values()]
+    sensitivities = [rm.sensitivity for rm in report.rule_metrics.values()]
+
+    fig, ax = plt.subplots(figsize=(9, max(4, len(labels_list) * 0.45)))
+    y_pos = range(len(labels_list))
+    ax.barh(list(y_pos), sensitivities, color="#4C72B0", zorder=3)
+    ax.set_yticks(list(y_pos))
+    ax.set_yticklabels(labels_list, fontsize=8)
+    ax.set_xlim(0, 1.1)
+    ax.set_xlabel("Sensitivity (recall per rule)")
+    ax.set_title("Per-Rule Detection Sensitivity\n(only rules with labelled casual videos)")
+    ax.axvline(1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+    ax.grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+
+    chart_path = charts_dir / "rule_sensitivity.png"
+    fig.savefig(chart_path, dpi=150)
+    plt.close(fig)
+    print(f"  ✓ {chart_path}")
+    return chart_path
+
+
+def write_mocap_csv(results: "list[MocapEvalResult]", output_dir: Path) -> Path:
+    """Write per-clip ground-truth accuracy (PA-MPJPE, angle MAE) to CSV."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / "mocap_accuracy.csv"
+
+    fieldnames = [
+        "model", "video", "exercise", "subject",
+        "pa_mpjpe_mm", "pa_mpjpe_p95_mm", "angle_mae_deg",
+        "evaluated_frames", "coverage",
+    ]
+    with open(csv_path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for r in results:
+            writer.writerow({
+                "model": r.model_name,
+                "video": Path(r.video_path).name,
+                "exercise": r.exercise_name,
+                "subject": r.subject,
+                "pa_mpjpe_mm": f"{r.pa_mpjpe_mm:.2f}",
+                "pa_mpjpe_p95_mm": f"{r.pa_mpjpe_p95_mm:.2f}",
+                "angle_mae_deg": f"{r.angle_mae_deg:.2f}",
+                "evaluated_frames": r.evaluated_frames,
+                "coverage": f"{r.coverage:.4f}",
+            })
+    print(f"  ✓ {csv_path}")
+    return csv_path
+
+
+def write_mocap_summary_csv(results: "list[MocapEvalResult]", output_dir: Path) -> Path:
+    """Aggregate ground-truth accuracy per model, with subject-held-out stats.
+
+    Each clip is one observation.  We report the mean PA-MPJPE / angle MAE
+    across clips together with a 95% bootstrap CI *clustered by subject* so the
+    interval reflects between-subject variation, not just between-frame noise.
+    """
+    from fitness_form_ai.evaluation.stats import bootstrap_ci_clustered
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / "mocap_summary.csv"
+
+    by_model: dict[str, list["MocapEvalResult"]] = {}
+    for r in results:
+        by_model.setdefault(r.model_name, []).append(r)
+
+    fieldnames = [
+        "model", "n_clips", "n_subjects",
+        "pa_mpjpe_mm", "pa_mpjpe_ci_low", "pa_mpjpe_ci_high",
+        "angle_mae_deg", "angle_mae_ci_low", "angle_mae_ci_high",
+    ]
+    with open(csv_path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for model, rs in by_model.items():
+            mpjpe = [r.pa_mpjpe_mm for r in rs]
+            angle = [r.angle_mae_deg for r in rs]
+            subjects = [r.subject for r in rs]
+            m_lo, m_hi = bootstrap_ci_clustered(mpjpe, subjects)
+            a_lo, a_hi = bootstrap_ci_clustered(angle, subjects)
+            writer.writerow({
+                "model": model,
+                "n_clips": len(rs),
+                "n_subjects": len(set(subjects)),
+                "pa_mpjpe_mm": f"{sum(mpjpe) / len(mpjpe):.2f}",
+                "pa_mpjpe_ci_low": f"{m_lo:.2f}",
+                "pa_mpjpe_ci_high": f"{m_hi:.2f}",
+                "angle_mae_deg": f"{sum(angle) / len(angle):.2f}",
+                "angle_mae_ci_low": f"{a_lo:.2f}",
+                "angle_mae_ci_high": f"{a_hi:.2f}",
+            })
+    print(f"  ✓ {csv_path}")
+    return csv_path
+
+
 def generate_full_report(
     results: list[BenchmarkResult],
     comparison: ComparisonReport,
     output_dir: Path,
+    classification_report: "ClassificationReport | None" = None,
+    labels: "list[VideoLabel] | None" = None,
+    mocap_results: "list[MocapEvalResult] | None" = None,
 ) -> None:
     """Generate all CSVs and charts."""
 
@@ -331,5 +677,19 @@ def generate_full_report(
     plot_latency_boxplot(results, output_dir)
     plot_jitter_comparison(results, output_dir)
     plot_angle_correlation(results, comparison, output_dir)
+
+    if classification_report is not None:
+        write_classification_csv(classification_report, output_dir)
+        write_exercise_metrics_csv(classification_report, output_dir)
+        write_rule_metrics_csv(classification_report, output_dir)
+        plot_confusion_matrix(classification_report, output_dir)
+        plot_f1_bar(classification_report, output_dir)
+        plot_rule_sensitivity(classification_report, output_dir)
+        if labels is not None:
+            write_classification_stats_csv(classification_report, labels, output_dir)
+
+    if mocap_results:
+        write_mocap_csv(mocap_results, output_dir)
+        write_mocap_summary_csv(mocap_results, output_dir)
 
     print(f"\nAll reports saved to {output_dir}")

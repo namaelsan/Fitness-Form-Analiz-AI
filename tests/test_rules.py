@@ -1,6 +1,7 @@
 from fitness_form_ai.domain.rep_frame import RepFrame
 from fitness_form_ai.domain.metrics import AngleMetric, SymmetryMetric, TrackerAngleMetric
 from fitness_form_ai.domain.rules import (
+    FloorRule,
     KneeValgusRule,
     MaxValueRule,
     RangeRule,
@@ -82,6 +83,14 @@ def test_symmetry_rule_accepts_balanced_values() -> None:
     assert rule.apply(rep) is True
 
 
+def test_floor_rule_passes_when_minimum_stays_above_threshold() -> None:
+    rule = FloorRule("Floor", TrackerAngleMetric("Tracker"), minimum=0.08)
+    passing = [RepFrame(angle=0.12, timestamp=0.0), RepFrame(angle=0.10, timestamp=0.1)]
+    failing = [RepFrame(angle=0.12, timestamp=0.0), RepFrame(angle=0.05, timestamp=0.1)]
+    assert rule.apply(passing) is True
+    assert rule.apply(failing) is False
+
+
 def test_knee_valgus_rule_fails_only_when_knees_collapse_inward() -> None:
     from fitness_form_ai.domain.metrics import JointPairAxisDistanceMetric
 
@@ -116,3 +125,25 @@ def test_knee_valgus_rule_fails_only_when_knees_collapse_inward() -> None:
 
     assert rule.apply(inward_collapse) is False
     assert rule.apply(knees_wider_than_feet) is True
+
+
+def test_reduce_reports_threshold_scalar_per_rule_type() -> None:
+    """Each rule's reduce() returns the scalar its threshold compares against."""
+    from fitness_form_ai.domain.metrics import JointPairAxisDistanceMetric
+    from fitness_form_ai.domain.rules import MaxDepthRule, MinValueRule
+
+    rep = [
+        RepFrame(angle=160, timestamp=0.0, velocity=0),
+        RepFrame(angle=80, timestamp=0.5, velocity=120),
+        RepFrame(angle=155, timestamp=1.0, velocity=40),
+    ]
+    metric = TrackerAngleMetric("Angle")
+
+    assert MaxDepthRule("Depth", metric, 85).reduce(rep) == 80      # deepest
+    assert MinValueRule("Lockout", metric, 150).reduce(rep) == 160  # peak
+    assert StabilityRule("Drift", metric, 40).reduce(rep) == 80     # max-min
+    assert TempoRule("Tempo", max_speed=250).reduce(rep) == 120     # peak speed
+    # RangeRule with no breach reports the extreme closest to a bound.
+    assert RangeRule("Band", metric, (0, 200)).reduce(rep) in (80, 160)
+    # Empty rep -> no value.
+    assert MinValueRule("Lockout", metric, 150).reduce([]) is None
