@@ -9,6 +9,10 @@ from fitness_form_ai.inference.base import LandmarkPoint, PoseModel
 
 
 class YOLOv8Model(PoseModel):
+    # YOLOv8 pose is a 2D model: extract_landmarks sets z=0.0 for all joints.
+    # PA-MPJPE results against 3D mocap ground truth reflect 2D-projected alignment only.
+    provides_3d_landmarks = False
+
     def __init__(self, model_version: str = "yolov8n-pose.pt") -> None:
         from ultralytics import YOLO
 

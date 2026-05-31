@@ -15,6 +15,11 @@ class LandmarkPoint:
 
 
 class PoseModel(ABC):
+    # Subclasses that only produce 2D landmarks (z=0) should override this to False.
+    # PA-MPJPE against 3D ground truth is still computable but reflects 2D-projected
+    # alignment only; results are not comparable to a true 3D model.
+    provides_3d_landmarks: bool = True
+
     @abstractmethod
     def process_image(self, image: np.ndarray) -> Any:
         raise NotImplementedError

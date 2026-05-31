@@ -32,10 +32,14 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import sys
+import warnings
+
 import cv2
 import numpy as np
 
 from fitness_form_ai.app.catalog import EXERCISE_REGISTRY
+from fitness_form_ai.inference.base import PoseModel
 from fitness_form_ai.inference.factory import create_pose_model
 from fitness_form_ai.utils.geometry import letterbox_resize
 
@@ -114,8 +118,12 @@ def resolve_gt_path(video_path: Path) -> Path | None:
     Returns ``None`` when no matching ground-truth file exists.
     """
     video_path = Path(video_path)
-    # video_path.parent is the camera dir; its parent holds joints3d_25/.
-    gt = video_path.parent.parent / "joints3d_25" / f"{video_path.stem}.json"
+    # Layout: <subject>/videos/<camera>/<clip>.mp4
+    #         <subject>/joints3d_25/<clip>.json
+    # video_path.parent        = <camera dir>
+    # video_path.parent.parent = videos/
+    # video_path.parent.parent.parent = <subject dir>  ← joints3d_25 lives here
+    gt = video_path.parent.parent.parent / "joints3d_25" / f"{video_path.stem}.json"
     return gt if gt.exists() else None
 
 
@@ -228,6 +236,7 @@ def evaluate_clip_against_mocap(
     resize: tuple[int, int] = (640, 480),
     gt_offset: int = 0,
     min_points: int = 6,
+    model: PoseModel | None = None,
 ) -> MocapEvalResult:
     """Run *model_name* over *video_path* and score it against FIT3D mocap.
 
@@ -235,6 +244,10 @@ def evaluate_clip_against_mocap(
     index (FIT3D clips are normally already synchronised, so the default is 0).
     *min_points* is the minimum number of corresponded joints required before a
     frame contributes to PA-MPJPE.
+
+    If *model* is supplied the caller is responsible for its lifecycle (no
+    ``model.release()`` is called here).  Pass a pre-created instance to amortise
+    model initialisation cost across many clips.
     """
     video_path = Path(video_path)
     if gt_path is None:
@@ -248,9 +261,23 @@ def evaluate_clip_against_mocap(
     exercise_cls = EXERCISE_REGISTRY.get(exercise_name, EXERCISE_REGISTRY["curl"])
     primary = exercise_cls().primary_joints  # three MediaPipe joint names
 
-    model = create_pose_model(model_name)
+    own_model = model is None
+    if own_model:
+        model = create_pose_model(model_name)
+
+    # Warn once per model class when it cannot produce real depth.
+    if not getattr(model, "provides_3d_landmarks", True):
+        warnings.warn(
+            f"{model.__class__.__name__} is a 2D model (z=0 for all joints). "
+            "PA-MPJPE against 3D mocap ground truth reflects 2D-projected alignment "
+            "only and is not comparable to a true 3D model.",
+            stacklevel=2,
+        )
+
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
+        if own_model:
+            model.release()
         raise FileNotFoundError(f"Cannot open video: {video_path}")
 
     result = MocapEvalResult(
@@ -284,7 +311,8 @@ def evaluate_clip_against_mocap(
             frame_idx += 1
     finally:
         cap.release()
-        model.release()
+        if own_model:
+            model.release()
 
     return result
 

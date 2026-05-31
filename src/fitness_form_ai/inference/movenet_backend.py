@@ -12,6 +12,10 @@ from fitness_form_ai.inference.base import LandmarkPoint, PoseModel
 
 
 class MoveNetModel(PoseModel):
+    # MoveNet is a 2D model: extract_landmarks sets z=0.0 for all joints.
+    # PA-MPJPE results against 3D mocap ground truth reflect 2D-projected alignment only.
+    provides_3d_landmarks = False
+
     def __init__(self, variant: str = "lightning") -> None:
         import tensorflow as tf
 
@@ -108,8 +112,12 @@ class MoveNetModel(PoseModel):
             if confidence <= 0.3:
                 continue
             if image_shape is not None:
+                # Both axes divided by the same factor (scale * w) so x and y
+                # remain on a consistent scale. Dividing y by (scale * h) instead
+                # would give different units per axis and distort angle calculations
+                # on non-square images.
                 x_out = (float(x) * S - pad_x) / (scale * w)
-                y_out = (float(y) * S - pad_y) / (scale * h)
+                y_out = (float(y) * S - pad_y) / (scale * w)
             else:
                 x_out, y_out = float(x), float(y)
             landmarks[name] = LandmarkPoint(x=x_out, y=y_out, z=0.0)
