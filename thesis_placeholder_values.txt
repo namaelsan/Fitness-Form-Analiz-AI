@@ -1,0 +1,140 @@
+================================================================================
+TEZ.md PLACEHOLDER DEĞERLERİ
+Üretim zamanı: 2026-06-03 15:44:21
+Bu dosya compute_thesis_values.py tarafından bağımsız olarak hesaplanmıştır.
+================================================================================
+
+
+## Tablo 3.1 — Veri seti istatistikleri (FIT3D, poz doğruluğu için)
+(FIT3D atlandı — --skip-fit3d veya klip bulunamadı)
+
+
+## Tablo 4.1a — Gerçek 3B modeller: poz kestirim doğruluğu (model × egzersiz)
+       FIT3D 3B referansına Umeyama benzerlik hizalamasıyla hesaplanmıştır.
+Model              Egzersiz               PA-MPJPE ort(mm)  PA-MPJPE p95   Açı MAE(°)   Kapsam(%)
+-------------------------------------------------------------------------------------------------------
+MediaPipe          Squat                  —                 —              —            0.0
+MediaPipe          Deadlift               —                 —              —            0.0
+MediaPipe          Tek Kol Dumbbell Curl  —                 —              —            0.0
+MediaPipe          Omuz Presi             —                 —              —            0.0
+MediaPipe          Yana Kaldırma          —                 —              —            0.0
+MeTRAbs            Squat                  —                 —              —            0.0
+MeTRAbs            Deadlift               —                 —              —            0.0
+MeTRAbs            Tek Kol Dumbbell Curl  —                 —              —            0.0
+MeTRAbs            Omuz Presi             —                 —              —            0.0
+MeTRAbs            Yana Kaldırma          —                 —              —            0.0
+
+
+## Tablo 4.1b — 2B modeller: poz kestirim doğruluğu (2B-izdüşümlü hizalama)
+UYARI: MoveNet ve YOLOv8 2B modellerdir (tüm eklemler z=0). PA-MPJPE değerleri
+       3B referansa 2B-izdüşüm Procrustes hizalamasıdır; Tablo 4.1a (3B) ile
+       doğrudan kıyaslanamaz. 2B modeller arası 'Açı MAE' sütunu daha anlamlıdır.
+Model              Egzersiz               PA-MPJPE ort(mm)  PA-MPJPE p95   Açı MAE(°)   Kapsam(%)
+-------------------------------------------------------------------------------------------------------
+MoveNet-Thunder    Squat                  —                 —              —            0.0
+MoveNet-Thunder    Deadlift               —                 —              —            0.0
+MoveNet-Thunder    Tek Kol Dumbbell Curl  —                 —              —            0.0
+MoveNet-Thunder    Omuz Presi             —                 —              —            0.0
+MoveNet-Thunder    Yana Kaldırma          —                 —              —            0.0
+MoveNet-Lightning  Squat                  —                 —              —            0.0
+MoveNet-Lightning  Deadlift               —                 —              —            0.0
+MoveNet-Lightning  Tek Kol Dumbbell Curl  —                 —              —            0.0
+MoveNet-Lightning  Omuz Presi             —                 —              —            0.0
+MoveNet-Lightning  Yana Kaldırma          —                 —              —            0.0
+YOLOv8n            Squat                  —                 —              —            0.0
+YOLOv8n            Deadlift               —                 —              —            0.0
+YOLOv8n            Tek Kol Dumbbell Curl  —                 —              —            0.0
+YOLOv8n            Omuz Presi             —                 —              —            0.0
+YOLOv8n            Yana Kaldırma          —                 —              —            0.0
+
+
+## Tablo 4.2 — Gerçek zamanlı başarım (model)
+Model              Ort. FPS   p95 Gecikme(ms)   Algılama(%)
+------------------------------------------------------------
+MediaPipe          —          —                 —
+MoveNet-Thunder    —          —                 —
+MoveNet-Lightning  —          —                 —
+YOLOv8n            —          —                 —
+MeTRAbs            —          —                 —
+
+
+## Tablo 4.3 — Model çiftleri arası eklem açısı uyumu (kare indeksine göre hizalı)
+Çift                         RMSE(°)    MAE(°)     Pearson r   R²
+----------------------------------------------------------------------
+MediaPipe – MoveNet-Thunder  —          —          —           —
+MediaPipe – YOLOv8n          —          —          —           —
+MediaPipe – MeTRAbs          —          —          —           —
+
+
+## Tablo 3.2 — Etiketli klip seti istatistikleri (araştırmacı, form değerlendirmesi)
+Egzersiz               Düzgün   Özensiz  Toplam tekrar  Çekim açısı
+------------------------------------------------------------------------
+Squat                  3        5        36             [PLACEHOLDER: çekim açısı — araştırmacı girecek]
+Deadlift               3        5        36             [PLACEHOLDER: çekim açısı — araştırmacı girecek]
+Tek Kol Dumbbell Curl  3        4        40             [PLACEHOLDER: çekim açısı — araştırmacı girecek]
+Omuz Presi             3        5        49             [PLACEHOLDER: çekim açısı — araştırmacı girecek]
+Yana Kaldırma          3        5        45             [PLACEHOLDER: çekim açısı — araştırmacı girecek]
+TOPLAM                 15       24       206            -
+Denek sayısı: 1 (araştırmacı)
+Çekim ortamı sayısı: [PLACEHOLDER: araştırmacı girecek — veriden türetilemez]
+Çözünürlük/FPS: 720×1280 @ 24 FPS (n=3); 720×1280 @ 25 FPS (n=1); 720×1280 @ 30 FPS (n=35)
+Not: 'Toplam tekrar' RepTracker durum makinesinin çıkardığı tam tekrar
+     sayılarıdır (proper + casual klipler). 'Çekim açısı' ve 'Çekim ortamı
+     sayısı' veri dosyalarından türetilemez; araştırmacı tarafından doldurulmalıdır.
+
+
+## Tablo 4.4 — Form sınıflandırma başarımı (MediaPipe, etiketli klipler)
+NOT: labels.csv yalnızca 'casual' (hatalı) örnekler içeriyorsa, özgüllük ve
+     hassasiyet için gereken proper/negatif örnek yoktur; bu durumda özgüllük '—' olur.
+Egzersiz               Hassasiyet  Duyarlılık  F1      Özgüllük   Doğruluk  (TP/TN/FP/FN/no_reps)
+-------------------------------------------------------------------------------------------------------
+Squat                  0.62        1.00        0.77    0.00       0.62      (5/0/3/0/0)
+Deadlift               0.62        1.00        0.77    0.00       0.62      (5/0/3/0/0)
+Tek Kol Dumbbell Curl  0.67        1.00        0.80    0.33       0.71      (4/1/2/0/0)
+Omuz Presi             0.62        1.00        0.77    0.00       0.62      (5/0/3/0/0)
+Yana Kaldırma          0.62        1.00        0.77    0.00       0.62      (5/0/3/0/0)
+Genel Ort.             0.63        1.00        0.77    0.07       0.64      (24/1/14/0/0)
+
+Genel F1     : 0.77  %95 GA [0.63 – 0.88]
+Genel Doğruluk: 0.64  %95 GA [0.49 – 0.79]
+Çoğunluk-sınıf temeli ('casual'): doğruluk=0.62, F1=0.76
+
+
+## Tablo 4.5 — Kural bazında tespit duyarlılığı (MediaPipe)
+Egzersiz               Kural                        TP    FN    Duyarlılık
+------------------------------------------------------------------------------
+Squat                  Controlled descent           0     1     0.00
+Squat                  Knees track over feet        0     1     0.00
+Squat                  Torso stays stacked          2     0     1.00
+Squat                  Depth reached                1     0     1.00
+Deadlift               Hip hinge depth              0     1     0.00
+Deadlift               Neutral spine                1     0     1.00
+Deadlift               Bar stays close              1     0     1.00
+Deadlift               Torso angle controlled       1     0     1.00
+Deadlift               No jerking                   1     0     1.00
+Tek Kol Dumbbell Curl  Full contraction             1     0     1.00
+Tek Kol Dumbbell Curl  Full extension               1     0     1.00
+Tek Kol Dumbbell Curl  Upper Arm Still              1     0     1.00
+Tek Kol Dumbbell Curl  Controlled tempo             1     0     1.00
+Omuz Presi             Controlled press             1     0     1.00
+Omuz Presi             No back overextension        1     0     1.00
+Omuz Presi             Wrists stay stacked          1     0     1.00
+Omuz Presi             Press stays symmetric        1     0     1.00
+Omuz Presi             Full press extension         1     0     1.00
+Yana Kaldırma          No swinging                  1     0     1.00
+Yana Kaldırma          Elbow bend stays soft        1     0     1.00
+Yana Kaldırma          Shoulder stays depressed     0     1     0.00
+Yana Kaldırma          Torso stays still            1     0     1.00
+Yana Kaldırma          Top height stays clean       1     0     1.00
+
+
+## ÖZET / ABSTRACT için özet değerler
+MediaPipe egzersiz-ortalaması PA-MPJPE: (FIT3D çalıştırılmadı)
+Genel F1 ve %95 GA değerleri için yukarıdaki Tablo 4.4 bölümüne bakınız.
+
+
+## KAYNAKÇA — FIT3D atıfı (doğrulanmış)
+Fieraru, M., Zanfir, M., Pirlea, S. C., Olaru, V., & Sminchisescu, C. (2021).
+AIFit: Automatic 3D human-interpretable feedback models for fitness training.
+In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR) (pp. 9919–9928).

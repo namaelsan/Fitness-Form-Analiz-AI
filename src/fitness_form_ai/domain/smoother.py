@@ -38,8 +38,11 @@ import math
 # seed_interval_ms  – Assumed inter-frame interval before any real data
 #                     arrives.  33.3 ms = 30 FPS, the most common default.
 #
-# min_frames        – Hard floor.  Never average fewer than this many frames;
-#                     below 3 the smoothing is essentially useless.
+# min_frames        – Hard floor.  Default 1 means "no floor": on very slow
+#                     models the window can collapse to a single frame so we
+#                     never average across stale data and over-smooth real
+#                     movement.  Raise it only if a guaranteed minimum of
+#                     smoothing is desired.
 #
 # max_frames        – Hard ceiling.  Prevents over-smoothing on very slow
 #                     models where a large window would blur real movement.
@@ -48,7 +51,7 @@ import math
 _DEFAULT_TARGET_MS: float = 150.0
 _DEFAULT_EMA_ALPHA: float = 0.15
 _DEFAULT_SEED_MS: float = 33.3     # 30 FPS
-_DEFAULT_MIN_FRAMES: int = 3
+_DEFAULT_MIN_FRAMES: int = 1
 _DEFAULT_MAX_FRAMES: int = 15
 
 

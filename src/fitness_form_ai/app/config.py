@@ -13,6 +13,7 @@ SUPPORTED_MODELS: Final[tuple[str, ...]] = (
     "mediapipe-lite",
     "mediapipe-full",
     "mediapipe-heavy",
+    "metrabs",
     "yolov8",
     "movenet-lightning",
     "movenet-thunder",
@@ -34,7 +35,7 @@ class TrackingConfig:
     # Adaptive smoother parameters
     smooth_target_window_ms: float = 150.0  # time span to smooth over
     smooth_ema_alpha: float = 0.15          # EMA adaptation speed (0 < α ≤ 1)
-    smooth_min_frames: int = 3              # minimum window size
+    smooth_min_frames: int = 1              # minimum window size (1 = no floor)
     smooth_max_frames: int = 15             # maximum window size
     # State-machine debounce: consecutive frames required to confirm a phase transition
     confirm_frames: int = 3

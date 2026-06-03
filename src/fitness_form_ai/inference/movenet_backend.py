@@ -12,8 +12,20 @@ from fitness_form_ai.inference.base import LandmarkPoint, PoseModel
 
 
 class MoveNetModel(PoseModel):
-    # MoveNet is a 2D model: extract_landmarks sets z=0.0 for all joints.
-    # PA-MPJPE results against 3D mocap ground truth reflect 2D-projected alignment only.
+    """MoveNet (Lightning/Thunder) — a **2D-only** pose estimator.
+
+    MoveNet outputs image-plane (x, y) keypoints with no depth, so
+    ``extract_landmarks`` hardcodes ``z=0.0`` for every joint. It is kept in the
+    system deliberately, as an explicit 2D baseline for controlled comparison
+    against the true 3D backends (MediaPipe BlazePose, MeTRAbs).
+
+    Important: any 3D metric computed on this model measures the *cost of missing
+    depth*, not true 3D accuracy. In particular, PA-MPJPE against the FIT3D 3D
+    mocap ground truth reflects 2D-projected alignment only and is not comparable
+    to a genuine 3D model; ``calculate_angle_3d`` degenerates to a projected 2D
+    angle; and depth-dependent rules are not meaningful here.
+    """
+
     provides_3d_landmarks = False
 
     def __init__(self, variant: str = "lightning") -> None:

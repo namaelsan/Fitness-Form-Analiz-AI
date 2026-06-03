@@ -1,0 +1,58 @@
+# Sınıflandırma değerlendirmesi için etiket dosyası
+# Her satır bir video = bir değerlendirme örneği.
+#
+# Sütunlar:
+#   video_path              : videonun göreceli veya mutlak yolu
+#   exercise                : curl | squat | deadlift | shoulder_press | lateral_raise
+#   expected_class          : proper  (doğru form)  veya  casual  (hatalı form)
+#   expected_violated_rules : ihlal edilen kural adları, virgülle ayrılmış
+#                             (bilmiyorsan boş bırak; kural duyarlılığı için gereklidir)
+#
+# Kural adları (exercises.py'den — rule_name değerleri, sınıf adı değil):
+#   Squat     : Depth reached, Torso stays stacked, Knees track over feet, Controlled descent
+#   Curl      : Full contraction, Full extension, Upper Arm Still, Controlled tempo
+#   Deadlift  : Hip hinge depth, Neutral spine, Bar stays close, Torso angle controlled, No jerking
+#   ShoulderP : Full press extension, Wrists stay stacked, No back overextension, Press stays symmetric, Controlled press
+#   LateralR  : Top height stays clean, Torso stays still, Shoulder stays depressed, Elbow bend stays soft, No swinging
+#
+video_path,exercise,expected_class,expected_violated_rules
+examples/squat/casual/squat-mistake-1.mp4,squat,casual,Controlled descent
+examples/squat/casual/squat-mistake-2.mp4,squat,casual,Knees track over feet
+examples/squat/casual/squat-mistake-3.mp4,squat,casual,Torso stays stacked
+examples/squat/casual/squat-mistake-4.mp4,squat,casual,Torso stays stacked
+examples/squat/casual/squat-mistake-5.mp4,squat,casual,Depth reached
+examples/shoulder/casual/shoulder-press-mistake-1.mp4,shoulder_press,casual,Controlled press
+examples/shoulder/casual/shoulder-press-mistake-2.mp4,shoulder_press,casual,No back overextension
+examples/shoulder/casual/shoulder-press-mistake-3.mp4,shoulder_press,casual,Wrists stay stacked
+examples/shoulder/casual/shoulder-press-mistake-4.mp4,shoulder_press,casual,Press stays symmetric
+examples/shoulder/casual/shoulder-press-mistake-5.mp4,shoulder_press,casual,Full press extension
+examples/biceps/casual/biceps-mistake-1.mp4,curl,casual,Full contraction
+examples/biceps/casual/biceps-mistake-2.mp4,curl,casual,Full extension
+examples/biceps/casual/biceps-mistake-3.mp4,curl,casual,Upper Arm Still
+examples/biceps/casual/biceps-mistake-4.mp4,curl,casual,Controlled tempo
+examples/deadlift/casual/deadlift-mistake-1.mp4,deadlift,casual,Hip hinge depth
+examples/deadlift/casual/deadlift-mistake-2.mp4,deadlift,casual,Neutral spine
+examples/deadlift/casual/deadlift-mistake-3.mp4,deadlift,casual,Bar stays close
+examples/deadlift/casual/deadlift-mistake-4.mp4,deadlift,casual,Torso angle controlled
+examples/deadlift/casual/deadlift-mistake-5.mp4,deadlift,casual,No jerking
+examples/lateral-raise/casual/lateral-raise-mistake-1.mp4,lateral_raise,casual,No swinging
+examples/lateral-raise/casual/lateral-raise-mistake-2.mp4,lateral_raise,casual,Elbow bend stays soft
+examples/lateral-raise/casual/lateral-raise-mistake-3.mp4,lateral_raise,casual,Shoulder stays depressed
+examples/lateral-raise/casual/lateral-raise-mistake-4.mp4,lateral_raise,casual,Torso stays still
+examples/lateral-raise/casual/lateral-raise-mistake-5.mp4,lateral_raise,casual,Top height stays clean
+
+examples/squat/proper/squat-normal-1.mp4,squat,proper,
+examples/squat/proper/squat-normal-2.mp4,squat,proper,
+examples/squat/proper/squat-normal-3.mp4,squat,proper,
+examples/shoulder/proper/shoulder-press-normal-1.mp4,shoulder_press,proper,
+examples/shoulder/proper/shoulder-press-normal-2.mp4,shoulder_press,proper,
+examples/shoulder/proper/shoulder-press-normal-3.mp4,shoulder_press,proper,
+examples/biceps/proper/biceps-normal-1.mp4,curl,proper,
+examples/biceps/proper/biceps-normal-2.mp4,curl,proper,
+examples/biceps/proper/biceps-normal-3.mp4,curl,proper,
+examples/deadlift/proper/deadlift-normal-1.mp4,deadlift,proper,
+examples/deadlift/proper/deadlift-normal-2.mp4,deadlift,proper,
+examples/deadlift/proper/deadlift-normal-3.mp4,deadlift,proper,
+examples/lateral-raise/proper/lateral-raise-normal-1.mp4,lateral_raise,proper,
+examples/lateral-raise/proper/lateral-raise-normal-2.mp4,lateral_raise,proper,
+examples/lateral-raise/proper/lateral-raise-normal-3.mp4,lateral_raise,proper,

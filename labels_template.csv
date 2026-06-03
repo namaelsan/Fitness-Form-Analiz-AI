@@ -1,0 +1,31 @@
+# Sınıflandırma değerlendirmesi için etiket dosyası
+# Her satır bir video = bir değerlendirme örneği.
+#
+# Sütunlar:
+#   video_path              : videonun göreceli veya mutlak yolu
+#   exercise                : curl | squat | deadlift | shoulder_press | lateral_raise
+#   expected_class          : proper  (doğru form)  veya  casual  (hatalı form)
+#   expected_violated_rules : ihlal edilen kural adları, virgülle ayrılmış
+#                             (bilmiyorsan boş bırak; kural duyarlılığı için gereklidir)
+#
+# Kural adları (exercises.py'den):
+#   Squat     : MaxDepthRule, NeutralSpineRule, RangeRule, KneeValgusRule, TempoRule
+#   Curl      : MaxDepthRule, MinAngleRule, StabilityRule, TempoRule
+#   Deadlift  : MaxDepthRule, NeutralSpineRule, MaxDistRule, HipHingeRule, TempoRule
+#   ShoulderP : MinAngleRule, ElbowPathRule, RangeRule, TiltRule, TempoRule
+#   LateralR  : RangeRule, StabilityRule, FloorRule, ElbowRule, TempoRule
+#
+video_path,exercise,expected_class,expected_violated_rules
+data/videos/squat_proper_01.mp4,squat,proper,
+data/videos/squat_proper_02.mp4,squat,proper,
+data/videos/squat_casual_valgus_01.mp4,squat,casual,KneeValgusRule
+data/videos/squat_casual_depth_01.mp4,squat,casual,MaxDepthRule
+data/videos/curl_proper_01.mp4,curl,proper,
+data/videos/curl_casual_fast_01.mp4,curl,casual,TempoRule
+data/videos/curl_casual_swing_01.mp4,curl,casual,StabilityRule
+data/videos/deadlift_proper_01.mp4,deadlift,proper,
+data/videos/deadlift_casual_spine_01.mp4,deadlift,casual,NeutralSpineRule
+data/videos/shoulder_press_proper_01.mp4,shoulder_press,proper,
+data/videos/shoulder_press_casual_range_01.mp4,shoulder_press,casual,MinAngleRule
+data/videos/lateral_raise_proper_01.mp4,lateral_raise,proper,
+data/videos/lateral_raise_casual_floor_01.mp4,lateral_raise,casual,FloorRule
