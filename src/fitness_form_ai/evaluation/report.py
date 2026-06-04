@@ -331,7 +331,7 @@ def plot_jitter_comparison(results: list[BenchmarkResult], output_dir: Path) -> 
 
 
 def write_classification_csv(report: "ClassificationReport", output_dir: Path) -> Path:
-    """Write per-video classification results to CSV."""
+    """Write per-rep classification results to CSV (one row per repetition)."""
     from fitness_form_ai.evaluation.classification import ClassificationReport  # noqa: F401
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -340,27 +340,27 @@ def write_classification_csv(report: "ClassificationReport", output_dir: Path) -
     fieldnames = [
         "video",
         "exercise",
+        "rep_index",
         "expected_class",
         "predicted_class",
         "correct",
         "outcome",
-        "expected_violated_rules",
-        "actually_failed_rules",
+        "failed_rules",
     ]
 
     with open(csv_path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
         writer.writeheader()
-        for vcr in report.video_results:
+        for rcr in report.rep_results:
             writer.writerow({
-                "video": Path(vcr.video_path).name,
-                "exercise": vcr.exercise,
-                "expected_class": vcr.expected_class,
-                "predicted_class": vcr.predicted_class,
-                "correct": vcr.is_correct,
-                "outcome": vcr.outcome,
-                "expected_violated_rules": "|".join(vcr.expected_violated_rules),
-                "actually_failed_rules": "|".join(vcr.actually_failed_rules),
+                "video": Path(rcr.video_path).name,
+                "exercise": rcr.exercise,
+                "rep_index": rcr.rep_index,
+                "expected_class": rcr.expected_class,
+                "predicted_class": rcr.predicted_class,
+                "correct": rcr.is_correct,
+                "outcome": rcr.outcome,
+                "failed_rules": "|".join(rcr.failed_rules),
             })
 
     print(f"  ✓ {csv_path}")
@@ -427,7 +427,11 @@ def write_classification_stats_csv(
     labels: "list[VideoLabel]",
     output_dir: Path,
 ) -> Path:
-    """Write bootstrap CIs (clustered by subject) and the majority baseline."""
+    """Write bootstrap CIs (per rep, clustered by subject) and the majority baseline.
+
+    *labels* is accepted for signature compatibility but the baseline is now
+    computed over the per-rep sample space so it matches the scored metrics.
+    """
     from fitness_form_ai.evaluation.stats import (
         classification_cis,
         majority_class_baseline,
@@ -436,10 +440,13 @@ def write_classification_stats_csv(
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "classification_stats.csv"
 
-    # Only videos that were actually scored (exclude no_reps) count toward CIs.
-    scored = [vr for vr in report.video_results if vr.outcome in {"TP", "TN", "FP", "FN"}]
+    # Every rep is a scored sample (there is no per-rep "no_reps" outcome); the
+    # filter is kept defensively in case future outcomes are added.
+    scored = [rr for rr in report.rep_results if rr.outcome in {"TP", "TN", "FP", "FN"}]
     cis = classification_cis(scored)
-    baseline = majority_class_baseline(labels)
+    # Majority-class floor over the same per-rep samples (duck-typed on
+    # ``expected_class``), so the baseline is comparable to the scored metrics.
+    baseline = majority_class_baseline(scored)
 
     with open(csv_path, "w", newline="") as fh:
         writer = csv.writer(fh)
@@ -447,7 +454,7 @@ def write_classification_stats_csv(
         writer.writerow([
             "accuracy", f"{cis.accuracy.point:.4f}",
             f"{cis.accuracy.ci_low:.4f}", f"{cis.accuracy.ci_high:.4f}",
-            f"{cis.n_videos} videos / {cis.n_subjects} subjects, 95% cluster bootstrap",
+            f"{cis.n_samples} reps / {cis.n_subjects} subjects, 95% cluster bootstrap",
         ])
         writer.writerow([
             "f1", f"{cis.f1.point:.4f}",
@@ -573,7 +580,7 @@ def plot_rule_sensitivity(report: "ClassificationReport", output_dir: Path) -> P
     ax.set_yticklabels(labels_list, fontsize=8)
     ax.set_xlim(0, 1.1)
     ax.set_xlabel("Sensitivity (recall per rule)")
-    ax.set_title("Per-Rule Detection Sensitivity\n(only rules with labelled casual videos)")
+    ax.set_title("Per-Rule Detection Sensitivity\n(per casual rep; rules listed on labelled casual clips)")
     ax.axvline(1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()

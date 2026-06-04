@@ -128,25 +128,26 @@ class MetricWithCI:
 class ClassificationCIs:
     accuracy: MetricWithCI
     f1: MetricWithCI
-    n_videos: int
+    n_samples: int          # number of rep-level samples
     n_subjects: int
 
 
 def classification_cis(
-    video_results: "Sequence[object]",
+    rep_results: "Sequence[object]",
     *,
     n_boot: int = 2000,
 ) -> ClassificationCIs:
-    """Bootstrap accuracy and F1 CIs over per-video classification results.
+    """Bootstrap accuracy and F1 CIs over per-rep classification results.
 
-    *video_results* are ``VideoClassificationResult`` objects (duck-typed:
-    each must expose ``outcome`` and ``video_path``).  The bootstrap is
-    clustered by FIT3D subject parsed from the video path.
+    *rep_results* are ``RepClassificationResult`` objects (duck-typed:
+    each must expose ``outcome`` and ``video_path``).  Each rep is one sample;
+    the bootstrap is clustered by FIT3D subject parsed from the video path so
+    reps from the same clip/subject are resampled together.
     """
     from fitness_form_ai.evaluation.mocap import subject_of
 
-    outcomes = [vr.outcome for vr in video_results]
-    subjects = [subject_of(vr.video_path) for vr in video_results]
+    outcomes = [vr.outcome for vr in rep_results]
+    subjects = [subject_of(vr.video_path) for vr in rep_results]
 
     # Encode each video as its outcome string and bootstrap over the encoded
     # list; the statistic decodes outcomes back into a metric.
@@ -168,7 +169,7 @@ def classification_cis(
     return ClassificationCIs(
         accuracy=MetricWithCI(_accuracy_from_outcomes(outcomes), acc_lo, acc_hi),
         f1=MetricWithCI(_f1_from_outcomes(outcomes), f1_lo, f1_hi),
-        n_videos=len(outcomes),
+        n_samples=len(outcomes),
         n_subjects=len(set(subjects)),
     )
 

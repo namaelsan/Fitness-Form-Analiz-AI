@@ -289,7 +289,7 @@ def _print_classification_summary(report: object) -> None:
             + ")"
         )
     if report.rule_metrics:  # type: ignore[attr-defined]
-        print("\n  Per-rule sensitivity (labelled casual videos only):")
+        print("\n  Per-rule sensitivity (per casual rep on labelled casual clips):")
         for rm in report.rule_metrics.values():  # type: ignore[attr-defined]
             print(f"    [{rm.exercise}] {rm.rule_name:<35} {rm.sensitivity:.2f}  ({rm.tp}/{rm.tp+rm.fn})")
     print("=" * 60)

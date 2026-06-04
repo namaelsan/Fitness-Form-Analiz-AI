@@ -3,9 +3,16 @@
 Requires a labels CSV with columns:
     video_path, exercise, expected_class, expected_violated_rules
 
-A video is predicted "casual" if at least one of its reps has at least one
-failed rule.  A video with zero detected reps is labelled "no_reps" and
-excluded from accuracy metrics (but reported separately so you can see it).
+Classification is evaluated **per repetition**: every rep the tracker extracts
+is its own proper/casual sample, inheriting its clip's expected class.  A rep is
+predicted "casual" if it failed at least one rule, otherwise "proper".  This is
+finer-grained and more faithful than collapsing a whole clip into a single
+label — a single tripped rep no longer condemns an otherwise-clean clip, and a
+casual clip contributes one sample per rep rather than one per video.
+
+A clip that yields zero detected reps cannot produce any rep sample; it is
+counted separately as ``no_reps`` (a per-clip diagnostic) and excluded from the
+rep-level accuracy metrics.
 """
 
 from __future__ import annotations
@@ -14,7 +21,7 @@ import csv
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fitness_form_ai.evaluation.benchmark import BenchmarkResult
+from fitness_form_ai.evaluation.benchmark import BenchmarkResult, RepRecord
 
 
 # ---------------------------------------------------------------------------
@@ -46,39 +53,29 @@ def load_labels(labels_csv: Path) -> list[VideoLabel]:
 
 
 # ---------------------------------------------------------------------------
-# Per-video prediction
+# Per-rep prediction
 # ---------------------------------------------------------------------------
 
-def _predict_class(result: BenchmarkResult) -> str:
-    """Predict "proper", "casual", or "no_reps" from a benchmark result."""
-    if not result.reps:
-        return "no_reps"
-    # "casual" if ANY rep failed ANY rule, else "proper".
-    if any(rep.failed_rules for rep in result.reps):
-        return "casual"
-    return "proper"
+def _predict_rep_class(rep: RepRecord) -> str:
+    """Predict "proper" or "casual" for a single repetition.
 
-
-def _failed_rules_union(result: BenchmarkResult) -> set[str]:
-    """All rule names that failed in at least one rep."""
-    failed: set[str] = set()
-    for rep in result.reps:
-        failed.update(rep.failed_rules)
-    return failed
+    A rep is "casual" if it failed at least one rule, else "proper".
+    """
+    return "casual" if rep.failed_rules else "proper"
 
 
 # ---------------------------------------------------------------------------
-# Per-video classification result
+# Per-rep classification result
 # ---------------------------------------------------------------------------
 
 @dataclass(slots=True)
-class VideoClassificationResult:
+class RepClassificationResult:
     video_path: str
     exercise: str
-    expected_class: str
-    predicted_class: str          # "proper", "casual", or "no_reps"
-    expected_violated_rules: list[str]
-    actually_failed_rules: list[str]  # union across all reps
+    rep_index: int
+    expected_class: str           # inherited from the clip label
+    predicted_class: str          # "proper" or "casual"
+    failed_rules: list[str]       # rules that failed on this rep
 
     @property
     def is_correct(self) -> bool:
@@ -86,9 +83,7 @@ class VideoClassificationResult:
 
     @property
     def outcome(self) -> str:
-        """TP / TN / FP / FN / no_reps label for the video-level binary task."""
-        if self.predicted_class == "no_reps":
-            return "no_reps"
+        """TP / TN / FP / FN for the rep-level binary task (casual = positive)."""
         if self.expected_class == "casual" and self.predicted_class == "casual":
             return "TP"
         if self.expected_class == "proper" and self.predicted_class == "proper":
@@ -106,10 +101,12 @@ class VideoClassificationResult:
 @dataclass
 class ExerciseMetrics:
     exercise: str
+    # tp/tn/fp/fn are rep-level counts.
     tp: int = 0
     tn: int = 0
     fp: int = 0
     fn: int = 0
+    # no_reps is a clip-level diagnostic: clips that produced zero reps.
     no_reps: int = 0
 
     @property
@@ -146,17 +143,17 @@ class ExerciseMetrics:
 class RuleMetrics:
     rule_name: str
     exercise: str
-    # A rule TP = expected to fire AND fired.
-    # A rule FN = expected to fire but did NOT fire.
-    # We cannot compute FP / TN at rule level without per-video rule labels
-    # for proper videos, so we report sensitivity only.
+    # A rule TP = expected to fire on a casual rep AND fired.
+    # A rule FN = expected to fire on a casual rep but did NOT fire.
+    # We cannot compute FP / TN at rule level without per-rep rule labels
+    # for proper reps, so we report sensitivity only.
     tp: int = 0
     fn: int = 0
 
     @property
     def sensitivity(self) -> float:
-        """Fraction of labelled casual videos (with this rule listed) that the
-        system correctly flagged via this rule."""
+        """Fraction of casual reps (whose clip lists this rule) that the system
+        correctly flagged via this rule."""
         denom = self.tp + self.fn
         return self.tp / denom if denom else 0.0
 
@@ -167,16 +164,18 @@ class RuleMetrics:
 
 @dataclass
 class ClassificationReport:
-    video_results: list[VideoClassificationResult] = field(default_factory=list)
+    rep_results: list[RepClassificationResult] = field(default_factory=list)
     exercise_metrics: dict[str, ExerciseMetrics] = field(default_factory=dict)
     rule_metrics: dict[str, RuleMetrics] = field(default_factory=dict)  # key = "exercise::rule"
+    # Clips that produced zero reps (path -> exercise), kept for diagnostics.
+    no_reps_clips: list[str] = field(default_factory=list)
 
 
 def evaluate_classification(
     benchmark_results: list[BenchmarkResult],
     labels: list[VideoLabel],
 ) -> ClassificationReport:
-    """Match benchmark results to labels and compute all classification metrics."""
+    """Match benchmark results to labels and compute per-rep classification metrics."""
 
     # Build lookup: normalised video path → BenchmarkResult
     result_map: dict[str, BenchmarkResult] = {}
@@ -194,49 +193,53 @@ def evaluate_classification(
             # Video was labelled but not benchmarked — skip
             continue
 
-        predicted = _predict_class(result)
-        failed = sorted(_failed_rules_union(result))
-
-        vcr = VideoClassificationResult(
-            video_path=label.video_path,
-            exercise=label.exercise,
-            expected_class=label.expected_class,
-            predicted_class=predicted,
-            expected_violated_rules=label.expected_violated_rules,
-            actually_failed_rules=failed,
-        )
-        report.video_results.append(vcr)
-
-        # ---- exercise-level confusion matrix ----
         ex = label.exercise
         if ex not in report.exercise_metrics:
             report.exercise_metrics[ex] = ExerciseMetrics(exercise=ex)
         em = report.exercise_metrics[ex]
-        outcome = vcr.outcome
-        if outcome == "TP":
-            em.tp += 1
-        elif outcome == "TN":
-            em.tn += 1
-        elif outcome == "FP":
-            em.fp += 1
-        elif outcome == "FN":
-            em.fn += 1
-        else:
-            em.no_reps += 1
 
-        # ---- per-rule sensitivity (only for casual videos with listed rules) ----
-        if label.expected_class == "casual" and label.expected_violated_rules:
-            failed_set = set(failed)
-            for rule_name in label.expected_violated_rules:
-                rkey = f"{ex}::{rule_name}"
-                if rkey not in report.rule_metrics:
-                    report.rule_metrics[rkey] = RuleMetrics(
-                        rule_name=rule_name, exercise=ex
-                    )
-                rm = report.rule_metrics[rkey]
-                if rule_name in failed_set:
-                    rm.tp += 1
-                else:
-                    rm.fn += 1
+        if not result.reps:
+            # No complete rep extracted — clip-level diagnostic only.
+            em.no_reps += 1
+            report.no_reps_clips.append(label.video_path)
+            continue
+
+        for rep in result.reps:
+            predicted = _predict_rep_class(rep)
+            rcr = RepClassificationResult(
+                video_path=label.video_path,
+                exercise=ex,
+                rep_index=rep.rep_index,
+                expected_class=label.expected_class,
+                predicted_class=predicted,
+                failed_rules=list(rep.failed_rules),
+            )
+            report.rep_results.append(rcr)
+
+            # ---- exercise-level (rep) confusion matrix ----
+            outcome = rcr.outcome
+            if outcome == "TP":
+                em.tp += 1
+            elif outcome == "TN":
+                em.tn += 1
+            elif outcome == "FP":
+                em.fp += 1
+            else:  # FN
+                em.fn += 1
+
+            # ---- per-rule sensitivity (only for casual reps whose clip lists rules) ----
+            if label.expected_class == "casual" and label.expected_violated_rules:
+                failed_set = set(rep.failed_rules)
+                for rule_name in label.expected_violated_rules:
+                    rkey = f"{ex}::{rule_name}"
+                    if rkey not in report.rule_metrics:
+                        report.rule_metrics[rkey] = RuleMetrics(
+                            rule_name=rule_name, exercise=ex
+                        )
+                    rm = report.rule_metrics[rkey]
+                    if rule_name in failed_set:
+                        rm.tp += 1
+                    else:
+                        rm.fn += 1
 
     return report

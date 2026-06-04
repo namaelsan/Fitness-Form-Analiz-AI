@@ -291,6 +291,55 @@ class FloorRule(MetricRule):
         return f"{self.metric.label}: {self._format_value(value)} (floor >= {self._format_value(self.minimum)})"
 
 
+class RelativeDropRule(MetricRule):
+    """Passes when the metric never contracts too far from its per-rep baseline.
+
+    Unlike :class:`FloorRule`, this carries no absolute threshold. The baseline
+    is the largest value the metric reaches during the rep (its most open /
+    most-depressed position), and the rule fails when the metric later
+    collapses by more than ``max_drop`` *fraction* of that baseline. Because the
+    comparison is a ratio against the rep's own scale, it is invariant to body
+    size, camera distance, and landmark normalization — so it detects a genuine
+    "major change" in the gap between two landmarks rather than tripping on an
+    arbitrary minimum value.
+
+    Example: for a lateral raise, the shoulder-ear vertical gap is widest when
+    the shoulder is depressed; a shrug shrinks that gap. ``max_drop=0.20`` fails
+    the rep when the gap contracts by more than 20% off its baseline.
+    """
+
+    def __init__(self, rule_name: str, metric: Metric, max_drop: float) -> None:
+        super().__init__(rule_name, metric)
+        self.max_drop = max_drop
+
+    def _drop_ratio(self, rep_data: list[RepFrame]) -> float | None:
+        values = self.metric.series(rep_data)
+        if not values:
+            return None
+        baseline = max(values)
+        if baseline <= 0:
+            return None
+        return (baseline - min(values)) / baseline
+
+    def apply(self, rep_data: list[RepFrame]) -> bool:
+        ratio = self._drop_ratio(rep_data)
+        if ratio is None:
+            return False
+        return ratio <= self.max_drop
+
+    def reduce(self, rep_data: list[RepFrame]) -> float | None:
+        return self._drop_ratio(rep_data)
+
+    def describe_current(self, context: RuleContext) -> str:
+        value = self._current_metric_value(context)
+        if value is None:
+            return f"max drop {self.max_drop * 100:.0f}% off baseline"
+        return (
+            f"{self.metric.label}: {self._format_value(value)} "
+            f"(max drop {self.max_drop * 100:.0f}% off baseline)"
+        )
+
+
 class TempoRule(Rule):
     def __init__(
         self,
